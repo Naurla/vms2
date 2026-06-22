@@ -115,3 +115,17 @@ function checkedInCount(\PDO $db): int
     $stmt = $db->query("SELECT COUNT(*) FROM visit_logs WHERE status = 'Checked In'");
     return (int)$stmt->fetchColumn();
 }
+
+/**
+ * Generate a unique random visit code.
+ */
+function generateVisitCode(\PDO $db): string
+{
+    do {
+        $code = 'VMS-' . strtoupper(bin2hex(random_bytes(2)));
+        $stmt = $db->prepare("SELECT COUNT(*) FROM visit_logs WHERE visit_code = ?");
+        $stmt->execute([$code]);
+        $exists = $stmt->fetchColumn() > 0;
+    } while ($exists);
+    return $code;
+}

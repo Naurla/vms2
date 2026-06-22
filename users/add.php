@@ -18,28 +18,32 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     verifyCsrf();
 
     $fullName = post('full_name');
-    $username = post('username');
+    $email    = post('email');
     $password = post('password');
     $confirm  = post('confirm_password');
     $role     = post('role', 'receptionist');
 
     if (!$fullName) $errors[] = 'Full name is required.';
-    if (!$username) $errors[] = 'Username is required.';
+    if (!$email) {
+        $errors[] = 'Email address is required.';
+    } elseif (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
+        $errors[] = 'Please enter a valid email address.';
+    }
     if (!$password) $errors[] = 'Password is required.';
     if (strlen($password) < 6) $errors[] = 'Password must be at least 6 characters.';
     if ($password !== $confirm) $errors[] = 'Passwords do not match.';
     if (!in_array($role, ['admin', 'receptionist'])) $errors[] = 'Invalid role.';
 
     if (!$errors) {
-        $dup = $db->prepare("SELECT id FROM users WHERE username = ?");
-        $dup->execute([$username]);
-        if ($dup->fetchColumn()) $errors[] = "Username \"{$username}\" is already taken.";
+        $dup = $db->prepare("SELECT id FROM users WHERE email = ?");
+        $dup->execute([$email]);
+        if ($dup->fetchColumn()) $errors[] = "Email \"{$email}\" is already taken.";
     }
 
     if (!$errors) {
         $hash = password_hash($password, PASSWORD_BCRYPT);
-        $db->prepare("INSERT INTO users (username, password, full_name, role) VALUES (?,?,?,?)")
-           ->execute([$username, $hash, $fullName, $role]);
+        $db->prepare("INSERT INTO users (email, password, full_name, role) VALUES (?,?,?,?)")
+           ->execute([$email, $hash, $fullName, $role]);
         setFlash('success', "User \"{$fullName}\" created successfully.");
         redirect('../users/list.php');
     }
@@ -75,11 +79,11 @@ require_once __DIR__ . '/../includes/header.php';
                            placeholder="e.g. Juan dela Cruz" required autofocus>
                 </div>
                 <div class="form-group">
-                    <label for="username">Username <span class="required-star">*</span></label>
-                    <input type="text" id="username" name="username"
-                           value="<?= e(post('username')) ?>"
-                           placeholder="e.g. jdelacruz"
-                           autocomplete="username" required>
+                    <label for="email">Email Address <span class="required-star">*</span></label>
+                    <input type="email" id="email" name="email"
+                           value="<?= e(post('email')) ?>"
+                           placeholder="e.g. user@example.com"
+                           autocomplete="email" required>
                 </div>
                 <div class="form-group">
                     <label for="role">Role <span class="required-star">*</span></label>

@@ -64,7 +64,7 @@ require_once __DIR__ . '/../includes/header.php';
             <thead>
                 <tr>
                     <th>Name</th>
-                    <th>Username</th>
+                    <th>Email Address</th>
                     <th>Role</th>
                     <th>Status</th>
                     <th>Last Login</th>
@@ -89,7 +89,7 @@ require_once __DIR__ . '/../includes/header.php';
                     </div>
                 </td>
                 <td style="font-family:monospace;font-size:13px;color:var(--text-secondary)">
-                    <?= e($u['username']) ?>
+                    <?= e($u['email']) ?>
                 </td>
                 <td><?= statusBadge($u['role']) ?></td>
                 <td>

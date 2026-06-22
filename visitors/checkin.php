@@ -29,8 +29,27 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
     $visitorId     = (int)post('visitor_id');
     $residentId    = (int)post('resident_id');
+    
     $relationship  = post('relationship');
+    $relationshipCustom = trim(post('relationship_custom'));
+    if ($relationship === 'Other') {
+        if ($relationshipCustom === '') {
+            $errors[] = 'Please specify the relationship.';
+        } else {
+            $relationship = $relationshipCustom;
+        }
+    }
+
     $purpose       = post('purpose');
+    $purposeCustom = trim(post('purpose_custom'));
+    if ($purpose === 'Other') {
+        if ($purposeCustom === '') {
+            $errors[] = 'Please specify the purpose of visit.';
+        } else {
+            $purpose = $purposeCustom;
+        }
+    }
+
     $numCompanions = max(0, (int)post('num_companions', '0'));
     $notes         = post('notes');
 
@@ -48,12 +67,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
 
     if (!$errors) {
+        $visitCode = generateVisitCode($db);
         $stmt = $db->prepare("
             INSERT INTO visit_logs
-                (visitor_id, resident_id, relationship, purpose, num_companions, check_in_time, checked_in_by)
-            VALUES (?, ?, ?, ?, ?, NOW(), ?)
+                (visitor_id, resident_id, relationship, purpose, num_companions, check_in_time, checked_in_by, visit_code)
+            VALUES (?, ?, ?, ?, ?, NOW(), ?, ?)
         ");
-        $stmt->execute([$visitorId, $residentId, $relationship, $purpose, $numCompanions, $user['id']]);
+        $stmt->execute([$visitorId, $residentId, $relationship, $purpose, $numCompanions, $user['id'], $visitCode]);
 
         // Get names for confirmation
         $vis = $db->prepare("SELECT full_name FROM visitors WHERE id = ?");
@@ -64,7 +84,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $res->execute([$residentId]);
         $resName = $res->fetchColumn();
 
-        setFlash('success', "✅ {$visName} has been checked in to visit {$resName}.");
+        setFlash('success', "✅ {$visName} has been checked in to visit {$resName}. Check-Out Code: <strong>{$visitCode}</strong>");
         redirect('../dashboard.php');
     }
 }
@@ -151,9 +171,16 @@ require_once __DIR__ . '/../includes/header.php';
                     <select id="relationship" name="relationship">
                         <option value="">— Select —</option>
                         <?php foreach (['Son','Daughter','Spouse','Sibling','Grandchild','Nephew/Niece','Friend','Medical Staff','Volunteer','Other'] as $r): ?>
-                        <option value="<?= e($r) ?>"><?= e($r) ?></option>
+                        <option value="<?= e($r) ?>" <?= post('relationship') === $r ? 'selected' : '' ?>><?= e($r) ?></option>
                         <?php endforeach; ?>
                     </select>
+                    <div id="relationship_custom_container" style="display: <?= post('relationship') === 'Other' ? 'block' : 'none' ?>; margin-top: 8px;">
+                        <label for="relationship_custom" style="font-size:12px; font-weight:700;">Specify Relationship <span class="required-star">*</span></label>
+                        <input type="text" id="relationship_custom" name="relationship_custom" 
+                               value="<?= e(post('relationship_custom')) ?>"
+                               placeholder="Specify relationship" 
+                               style="width: 100%; margin-top: 4px; border-radius:var(--radius-sm)">
+                    </div>
                 </div>
                 <div class="form-group">
                     <label for="num_companions">No. of Companions</label>
@@ -167,9 +194,16 @@ require_once __DIR__ . '/../includes/header.php';
                 <select id="purpose" name="purpose" required>
                     <option value="">— Select purpose —</option>
                     <?php foreach (['Regular Family Visit','Medical Checkup','Birthday / Special Occasion','Social/Recreational','Bring Personal Items','Medical Assistance','Official Business','Other'] as $p): ?>
-                    <option value="<?= e($p) ?>"><?= e($p) ?></option>
+                    <option value="<?= e($p) ?>" <?= post('purpose') === $p ? 'selected' : '' ?>><?= e($p) ?></option>
                     <?php endforeach; ?>
                 </select>
+                <div id="purpose_custom_container" style="display: <?= post('purpose') === 'Other' ? 'block' : 'none' ?>; margin-top: 8px;">
+                    <label for="purpose_custom" style="font-size:12px; font-weight:700;">Specify Purpose <span class="required-star">*</span></label>
+                    <input type="text" id="purpose_custom" name="purpose_custom" 
+                           value="<?= e(post('purpose_custom')) ?>"
+                           placeholder="Specify purpose of visit" 
+                           style="width: 100%; margin-top: 4px; border-radius:var(--radius-sm)">
+                </div>
             </div>
 
             <div class="form-group mb-20">
@@ -269,6 +303,48 @@ document.getElementById('checkin-form').addEventListener('submit', function() {
     btn.innerHTML = '<span class="spinner"></span> Processing…';
     btn.disabled = true;
 });
+
+// Relationship and Purpose "Other" toggles
+(function() {
+    const relationshipSelect = document.getElementById('relationship');
+    const relationshipCustomContainer = document.getElementById('relationship_custom_container');
+    const relationshipCustomInput = document.getElementById('relationship_custom');
+
+    const purposeSelect = document.getElementById('purpose');
+    const purposeCustomContainer = document.getElementById('purpose_custom_container');
+    const purposeCustomInput = document.getElementById('purpose_custom');
+
+    function toggleCustomFields() {
+        if (relationshipSelect && relationshipCustomContainer && relationshipCustomInput) {
+            if (relationshipSelect.value === 'Other') {
+                relationshipCustomContainer.style.display = 'block';
+                relationshipCustomInput.required = true;
+            } else {
+                relationshipCustomContainer.style.display = 'none';
+                relationshipCustomInput.required = false;
+            }
+        }
+        if (purposeSelect && purposeCustomContainer && purposeCustomInput) {
+            if (purposeSelect.value === 'Other') {
+                purposeCustomContainer.style.display = 'block';
+                purposeCustomInput.required = true;
+            } else {
+                purposeCustomContainer.style.display = 'none';
+                purposeCustomInput.required = false;
+            }
+        }
+    }
+
+    if (relationshipSelect) {
+        relationshipSelect.addEventListener('change', toggleCustomFields);
+    }
+    if (purposeSelect) {
+        purposeSelect.addEventListener('change', toggleCustomFields);
+    }
+    
+    // Run initially
+    toggleCustomFields();
+})();
 </script>
 
 <?php require_once __DIR__ . '/../includes/footer.php'; ?>

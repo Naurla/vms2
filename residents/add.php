@@ -24,6 +24,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $ecName       = post('emergency_contact_name');
     $ecPhone      = post('emergency_contact_phone');
     $ecRelation   = post('emergency_contact_relation');
+    $ecRelationCustom = trim(post('emergency_contact_relation_custom'));
+    if ($ecRelation === 'Other') {
+        if ($ecRelationCustom === '') {
+            $errors[] = 'Please specify the emergency contact relationship.';
+        } else {
+            $ecRelation = $ecRelationCustom;
+        }
+    }
     $medNotes     = post('medical_notes');
     $admDate      = post('admission_date') ?: null;
 
@@ -134,6 +142,13 @@ require_once __DIR__ . '/../includes/header.php';
                         </option>
                         <?php endforeach; ?>
                     </select>
+                    <div id="emergency_contact_relation_custom_container" style="display: <?= post('emergency_contact_relation') === 'Other' ? 'block' : 'none' ?>; margin-top: 8px;">
+                        <label for="emergency_contact_relation_custom" style="font-size:12px; font-weight:700;">Specify Relationship <span class="required-star">*</span></label>
+                        <input type="text" id="emergency_contact_relation_custom" name="emergency_contact_relation_custom" 
+                               value="<?= e(post('emergency_contact_relation_custom')) ?>"
+                               placeholder="Specify relationship" 
+                               style="width: 100%; margin-top: 4px;">
+                    </div>
                 </div>
             </div>
 
@@ -159,6 +174,31 @@ document.getElementById('add-form').addEventListener('submit', function() {
     document.getElementById('submit-btn').innerHTML = '<span class="spinner"></span> Saving…';
     document.getElementById('submit-btn').disabled = true;
 });
+
+// Emergency Contact Relation "Other" toggle
+(function() {
+    const relationSelect = document.getElementById('emergency_contact_relation');
+    const relationCustomContainer = document.getElementById('emergency_contact_relation_custom_container');
+    const relationCustomInput = document.getElementById('emergency_contact_relation_custom');
+
+    function toggleCustomFields() {
+        if (relationSelect && relationCustomContainer && relationCustomInput) {
+            if (relationSelect.value === 'Other') {
+                relationCustomContainer.style.display = 'block';
+                relationCustomInput.required = true;
+            } else {
+                relationCustomContainer.style.display = 'none';
+                relationCustomInput.required = false;
+            }
+        }
+    }
+
+    if (relationSelect) {
+        relationSelect.addEventListener('change', toggleCustomFields);
+    }
+    
+    toggleCustomFields();
+})();
 </script>
 
 <?php require_once __DIR__ . '/../includes/footer.php'; ?>

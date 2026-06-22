@@ -80,6 +80,7 @@ require_once __DIR__ . '/../includes/header.php';
         <table id="residents-table">
             <thead>
                 <tr>
+                    <th style="width: 80px;">ID</th>
                     <th>Name</th>
                     <th>Room</th>
                     <th>Age / Gender</th>
@@ -91,15 +92,20 @@ require_once __DIR__ . '/../includes/header.php';
                 </tr>
             </thead>
             <tbody>
-            <?php foreach ($residents as $res): ?>
+            <?php foreach ($residents as $index => $res): ?>
             <tr>
+                <td style="font-family: monospace; font-weight: bold; color: var(--text-secondary); font-size: 13px;">
+                    <?= $index + 1 ?>
+                </td>
                 <td>
                     <div class="resident-profile">
                         <div class="resident-avatar">
                             <?= strtoupper(substr($res['full_name'], 0, 1)) ?>
                         </div>
                         <div>
-                            <div class="resident-name"><?= e($res['full_name']) ?></div>
+                            <div class="resident-name">
+                                <?= e($res['full_name']) ?>
+                            </div>
                             <?php if ($res['active_visits']): ?>
                             <span class="badge badge-success" style="font-size:10px">Has visitor now</span>
                             <?php endif; ?>
@@ -128,19 +134,28 @@ require_once __DIR__ . '/../includes/header.php';
                 </td>
                 <td><?= statusBadge($res['status']) ?></td>
                 <td style="text-align:center">
-                    <div style="display:flex;gap:6px;justify-content:center;flex-wrap:wrap">
-                        <a href="../residents/view.php?id=<?= $res['id'] ?>" class="btn btn-sm btn-outline">👁 View</a>
-                        <a href="../residents/edit.php?id=<?= $res['id'] ?>" class="btn btn-sm btn-secondary">✏️</a>
-                        <!-- Toggle status -->
-                        <form method="POST" style="display:inline">
-                            <?= csrfField() ?>
-                            <input type="hidden" name="toggle_id" value="<?= $res['id'] ?>">
-                            <input type="hidden" name="new_status" value="<?= $res['status'] === 'Active' ? 'Inactive' : 'Active' ?>">
-                            <button type="submit" class="btn btn-sm <?= $res['status'] === 'Active' ? 'btn-danger' : 'btn-success' ?>"
-                                    data-confirm="<?= $res['status'] === 'Active' ? 'Mark as Inactive?' : 'Mark as Active?' ?>">
-                                <?= $res['status'] === 'Active' ? '⛔' : '✅' ?>
-                            </button>
-                        </form>
+                    <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;max-width:220px;margin:0 auto">
+                        <a href="../residents/view.php?id=<?= $res['id'] ?>" class="btn btn-sm btn-outline" style="justify-content:center;width:100%">👁 View</a>
+                        <a href="../residents/edit.php?id=<?= $res['id'] ?>" class="btn btn-sm btn-secondary" title="Edit" style="justify-content:center;width:100%">✏️ Edit</a>
+                        
+                        <?php if ($res['status'] === 'Active'): ?>
+                        <button type="button" class="btn btn-sm btn-danger" 
+                                onclick="confirmStatusToggle(<?= $res['id'] ?>, '<?= e(addslashes($res['full_name'])) ?>', 'Active')"
+                                title="Deactivate" style="grid-column:1/-1;justify-content:center;width:100%">
+                            ⛔ Deactivate
+                        </button>
+                        <?php else: ?>
+                        <button type="button" class="btn btn-sm btn-success" 
+                                onclick="confirmStatusToggle(<?= $res['id'] ?>, '<?= e(addslashes($res['full_name'])) ?>', 'Inactive')"
+                                title="Activate" style="justify-content:center;width:100%">
+                            ✅ Activate
+                        </button>
+                        <button type="button" class="btn btn-sm btn-danger" 
+                                onclick="confirmRemoveResident(<?= $res['id'] ?>, '<?= e(addslashes($res['full_name'])) ?>', <?= (int)$res['total_visits'] ?>)"
+                                title="Remove Resident" style="justify-content:center;width:100%">
+                            🗑️ Remove
+                        </button>
+                        <?php endif; ?>
                     </div>
                 </td>
             </tr>
@@ -158,8 +173,81 @@ require_once __DIR__ . '/../includes/header.php';
     <?php endif; ?>
 </div>
 
+<!-- Status Toggle Confirmation Modal -->
+<div class="modal-overlay" id="status-modal">
+    <div class="modal">
+        <div class="modal-icon" id="status-modal-icon">🔄</div>
+        <h2 id="status-modal-title">Change Status?</h2>
+        <p class="modal-sub" id="status-modal-message">Are you sure you want to change this resident's status?</p>
+        <form method="POST" id="status-form">
+            <?= csrfField() ?>
+            <input type="hidden" name="toggle_id" id="status-toggle-id" value="">
+            <input type="hidden" name="new_status" id="status-new-status" value="">
+            <div class="modal-btns">
+                <button type="button" class="btn-cancel" onclick="closeModal('status-modal')">Cancel</button>
+                <button type="submit" class="btn-confirm" id="status-confirm-btn">Confirm</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- Remove Resident Confirmation Modal -->
+<div class="modal-overlay" id="remove-modal">
+    <div class="modal">
+        <div class="modal-icon" id="remove-modal-icon">⚠️</div>
+        <h2>Remove Resident?</h2>
+        <p class="modal-sub" id="remove-modal-message">Are you sure you want to remove this resident?</p>
+        <form method="POST" id="remove-form">
+            <?= csrfField() ?>
+            <input type="hidden" name="delete_id" id="remove-delete-id" value="">
+            <div class="modal-btns">
+                <button type="button" class="btn-cancel" onclick="closeModal('remove-modal')">Cancel</button>
+                <button type="submit" class="btn-confirm btn-danger-confirm" id="remove-confirm-btn">Remove</button>
+            </div>
+        </form>
+    </div>
+</div>
+
 <script>
 initTableSearch('search-residents', 'residents-table');
+
+function confirmStatusToggle(id, name, currentStatus) {
+    const nextStatus = currentStatus === 'Active' ? 'Inactive' : 'Active';
+    document.getElementById('status-toggle-id').value = id;
+    document.getElementById('status-new-status').value = nextStatus;
+    
+    document.getElementById('status-modal-title').textContent = nextStatus === 'Inactive' ? 'Deactivate Resident?' : 'Activate Resident?';
+    document.getElementById('status-modal-message').innerHTML = `Are you sure you want to set <strong>${name}</strong> to <strong>${nextStatus}</strong>?`;
+    document.getElementById('status-modal-icon').textContent = nextStatus === 'Inactive' ? '⛔' : '✅';
+    
+    const confirmBtn = document.getElementById('status-confirm-btn');
+    if (nextStatus === 'Inactive') {
+        confirmBtn.className = 'btn-confirm btn-danger-confirm';
+        confirmBtn.textContent = 'Deactivate';
+    } else {
+        confirmBtn.className = 'btn-confirm';
+        confirmBtn.textContent = 'Activate';
+    }
+    
+    openModal('status-modal');
+}
+
+function confirmRemoveResident(id, name, totalVisits) {
+    document.getElementById('remove-delete-id').value = id;
+    const confirmBtn = document.getElementById('remove-confirm-btn');
+    
+    if (totalVisits > 0) {
+        document.getElementById('remove-modal-message').innerHTML = `<strong>${name}</strong> has <strong>${totalVisits} visit record(s)</strong> and cannot be permanently deleted. Please keep them as Inactive instead.`;
+        confirmBtn.style.display = 'none';
+        document.getElementById('remove-modal-icon').textContent = 'ℹ️';
+    } else {
+        document.getElementById('remove-modal-message').innerHTML = `Are you sure you want to permanently remove <strong>${name}</strong> from the system? This action cannot be undone.`;
+        confirmBtn.style.display = 'block';
+        document.getElementById('remove-modal-icon').textContent = '⚠️';
+    }
+    
+    openModal('remove-modal');
+}
 </script>
 
 <?php require_once __DIR__ . '/../includes/footer.php'; ?>

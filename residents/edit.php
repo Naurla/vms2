@@ -32,6 +32,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $ecName     = post('emergency_contact_name');
     $ecPhone    = post('emergency_contact_phone');
     $ecRelation = post('emergency_contact_relation');
+    $ecRelationCustom = trim(post('emergency_contact_relation_custom'));
+    if ($ecRelation === 'Other') {
+        if ($ecRelationCustom === '') {
+            $errors[] = 'Please specify the emergency contact relationship.';
+        } else {
+            $ecRelation = $ecRelationCustom;
+        }
+    }
     $medNotes   = post('medical_notes');
     $admDate    = post('admission_date') ?: null;
     $status     = post('status', 'Active');
@@ -140,12 +148,33 @@ require_once __DIR__ . '/../includes/header.php';
                 </div>
                 <div class="form-group">
                     <label for="emergency_contact_relation">Relationship</label>
+                    <?php
+                    $predefinedRelations = ['Son','Daughter','Spouse','Sibling','Nephew','Niece','Grandchild','Friend'];
+                    $selectedRelation = post('emergency_contact_relation', $resident['emergency_contact_relation'] ?? '');
+                    $isOtherSelected = ($selectedRelation === 'Other') || ($selectedRelation !== '' && !in_array($selectedRelation, $predefinedRelations));
+                    $relationCustomValue = '';
+                    if ($isOtherSelected) {
+                        if ($selectedRelation === 'Other') {
+                            $relationCustomValue = post('emergency_contact_relation_custom');
+                        } else {
+                            $relationCustomValue = $selectedRelation;
+                        }
+                    }
+                    ?>
                     <select id="emergency_contact_relation" name="emergency_contact_relation">
                         <option value="">— Select —</option>
-                        <?php foreach (['Son','Daughter','Spouse','Sibling','Nephew','Niece','Grandchild','Friend','Other'] as $r): ?>
-                        <option value="<?= e($r) ?>" <?= ($resident['emergency_contact_relation'] ?? '') === $r ? 'selected' : '' ?>><?= e($r) ?></option>
+                        <?php foreach ($predefinedRelations as $r): ?>
+                        <option value="<?= e($r) ?>" <?= $selectedRelation === $r ? 'selected' : '' ?>><?= e($r) ?></option>
                         <?php endforeach; ?>
+                        <option value="Other" <?= $isOtherSelected ? 'selected' : '' ?>>Other</option>
                     </select>
+                    <div id="emergency_contact_relation_custom_container" style="display: <?= $isOtherSelected ? 'block' : 'none' ?>; margin-top: 8px;">
+                        <label for="emergency_contact_relation_custom" style="font-size:12px; font-weight:700;">Specify Relationship <span class="required-star">*</span></label>
+                        <input type="text" id="emergency_contact_relation_custom" name="emergency_contact_relation_custom" 
+                               value="<?= e($relationCustomValue) ?>"
+                               placeholder="Specify relationship" 
+                               style="width: 100%; margin-top: 4px;">
+                    </div>
                 </div>
             </div>
 
@@ -168,6 +197,31 @@ document.getElementById('edit-form').addEventListener('submit', function() {
     document.getElementById('submit-btn').innerHTML = '<span class="spinner"></span> Saving…';
     document.getElementById('submit-btn').disabled = true;
 });
+
+// Emergency Contact Relation "Other" toggle
+(function() {
+    const relationSelect = document.getElementById('emergency_contact_relation');
+    const relationCustomContainer = document.getElementById('emergency_contact_relation_custom_container');
+    const relationCustomInput = document.getElementById('emergency_contact_relation_custom');
+
+    function toggleCustomFields() {
+        if (relationSelect && relationCustomContainer && relationCustomInput) {
+            if (relationSelect.value === 'Other') {
+                relationCustomContainer.style.display = 'block';
+                relationCustomInput.required = true;
+            } else {
+                relationCustomContainer.style.display = 'none';
+                relationCustomInput.required = false;
+            }
+        }
+    }
+
+    if (relationSelect) {
+        relationSelect.addEventListener('change', toggleCustomFields);
+    }
+    
+    toggleCustomFields();
+})();
 </script>
 
 <?php require_once __DIR__ . '/../includes/footer.php'; ?>

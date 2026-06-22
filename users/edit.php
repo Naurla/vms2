@@ -30,18 +30,22 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     verifyCsrf();
 
     $fullName   = post('full_name');
-    $username   = post('username');
+    $email      = post('email');
     $role       = post('role', $user['role']);
     $newPass    = post('new_password');
     $confirmPass= post('confirm_password');
 
     if (!$fullName) $errors[] = 'Full name is required.';
-    if (!$username) $errors[] = 'Username is required.';
+    if (!$email) {
+        $errors[] = 'Email address is required.';
+    } elseif (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
+        $errors[] = 'Please enter a valid email address.';
+    }
 
     if (!$errors) {
-        $dup = $db->prepare("SELECT id FROM users WHERE username = ? AND id != ?");
-        $dup->execute([$username, $id]);
-        if ($dup->fetchColumn()) $errors[] = "Username \"{$username}\" is already taken.";
+        $dup = $db->prepare("SELECT id FROM users WHERE email = ? AND id != ?");
+        $dup->execute([$email, $id]);
+        if ($dup->fetchColumn()) $errors[] = "Email \"{$email}\" is already taken.";
     }
 
     if ($newPass) {
@@ -52,8 +56,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if (!$errors) {
         $hash = $newPass ? password_hash($newPass, PASSWORD_BCRYPT) : $user['password'];
         $roleToSet = isAdmin() ? $role : $user['role']; // Only admins can change role
-        $db->prepare("UPDATE users SET full_name=?, username=?, password=?, role=? WHERE id=?")
-           ->execute([$fullName, $username, $hash, $roleToSet, $id]);
+        $db->prepare("UPDATE users SET full_name=?, email=?, password=?, role=? WHERE id=?")
+           ->execute([$fullName, $email, $hash, $roleToSet, $id]);
         setFlash('success', 'Profile updated successfully.');
         redirect($id == $self['id'] ? '../dashboard.php' : '../users/list.php');
     }
@@ -89,9 +93,9 @@ require_once __DIR__ . '/../includes/header.php';
                            value="<?= e(post('full_name') ?: $user['full_name']) ?>" required autofocus>
                 </div>
                 <div class="form-group">
-                    <label for="username">Username <span class="required-star">*</span></label>
-                    <input type="text" id="username" name="username"
-                           value="<?= e(post('username') ?: $user['username']) ?>" required>
+                    <label for="email">Email Address <span class="required-star">*</span></label>
+                    <input type="email" id="email" name="email"
+                           value="<?= e(post('email') ?: $user['email']) ?>" required>
                 </div>
                 <?php if (isAdmin()): ?>
                 <div class="form-group">

@@ -58,6 +58,192 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 });
 
+const locationData = {
+    'Zamboanga del Sur': {
+        'Zamboanga City': [
+            'Ayala',
+            'Baliwasan',
+            'Boalan',
+            'Canelar',
+            'Canelar Oriental',
+            'Divisoria',
+            'Guiwan',
+            'Kasanyangan',
+            'Lunzuran',
+            'Mampang',
+            'Manicahan',
+            'Mercedes',
+            'Pasonanca',
+            'Poblacion',
+            'Putik',
+            'Recodo',
+            'San Jose Cawa-Cawa',
+            'San Roque',
+            'Santa Barbara',
+            'Santa Catalina',
+            'Santa Maria',
+            'Sinunuc',
+            'Tetuan',
+            'Tugbungan',
+            'Tumaga',
+            'Vitali',
+            'Velez'
+        ]
+    }
+};
+
+function setOptions(select, values, placeholder) {
+    select.innerHTML = '';
+    const defaultOption = document.createElement('option');
+    defaultOption.value = '';
+    defaultOption.textContent = placeholder;
+    select.appendChild(defaultOption);
+
+    values.forEach(value => {
+        const option = document.createElement('option');
+        option.value = value;
+        option.textContent = value;
+        select.appendChild(option);
+    });
+    select.disabled = values.length === 0;
+}
+
+function highlightMatch(text, query) {
+    if (!query) return text;
+    const lowerText = text.toLowerCase();
+    const lowerQuery = query.toLowerCase();
+    const startIndex = lowerText.indexOf(lowerQuery);
+    if (startIndex === -1) return text;
+    return `${text.slice(0, startIndex)}<strong>${text.slice(startIndex, startIndex + query.length)}</strong>${text.slice(startIndex + query.length)}`;
+}
+
+function closeAllAutocompleteLists(except = null) {
+    document.querySelectorAll('.autocomplete-list.open').forEach(list => {
+        if (list !== except) {
+            list.classList.remove('open');
+        }
+    });
+}
+
+function setAutocompleteItems(listEl, items, query, onSelect, emptyMessage = 'No matches found') {
+    listEl.innerHTML = '';
+    if (!items.length) {
+        const noItem = document.createElement('div');
+        noItem.className = 'autocomplete-item';
+        noItem.style.color = '#96a5b0';
+        noItem.textContent = emptyMessage;
+        listEl.appendChild(noItem);
+        listEl.classList.add('open');
+        return;
+    }
+
+    items.forEach(item => {
+        const div = document.createElement('div');
+        div.className = 'autocomplete-item';
+        div.innerHTML = highlightMatch(item, query);
+        div.addEventListener('click', () => {
+            onSelect(item);
+            closeAllAutocompleteLists();
+        });
+        listEl.appendChild(div);
+    });
+    listEl.classList.add('open');
+}
+
+function filterItems(items, query) {
+    if (!query) return items.slice();
+    const lowerQuery = query.toLowerCase();
+    return items.filter(item => item.toLowerCase().includes(lowerQuery));
+}
+
+function getProvinceMatches(query) {
+    return filterItems(Object.keys(locationData), query);
+}
+
+function getCityMatches(province, query) {
+    if (!province || !locationData[province]) return [];
+    return filterItems(Object.keys(locationData[province]), query);
+}
+
+function getBarangayMatches(province, city, query) {
+    if (!province || !city || !locationData[province] || !locationData[province][city]) return [];
+    return filterItems(locationData[province][city], query);
+}
+
+function selectProvince(value, provinceInput, cityInput, barangayInput, cityList, barangayList) {
+    provinceInput.value = value;
+    cityInput.value = '';
+    barangayInput.value = '';
+    setAutocompleteItems(cityList, getCityMatches(value, ''), '', chosen => selectCity(chosen, provinceInput, cityInput, barangayInput, barangayList));
+    barangayList.classList.remove('open');
+    cityInput.focus();
+}
+
+function selectCity(value, provinceInput, cityInput, barangayInput, barangayList) {
+    cityInput.value = value;
+    barangayInput.value = '';
+    setAutocompleteItems(barangayList, getBarangayMatches(provinceInput.value, value, ''), '', chosen => selectBarangay(chosen, barangayInput));
+    barangayInput.focus();
+}
+
+function selectBarangay(value, barangayInput) {
+    barangayInput.value = value;
+    barangayInput.focus();
+}
+
+function initLocationSelectors() {
+    const provinceInput = document.getElementById('province');
+    const cityInput = document.getElementById('city');
+    const barangayInput = document.getElementById('barangay');
+    const provinceList = document.getElementById('province-list');
+    const cityList = document.getElementById('city-list');
+    const barangayList = document.getElementById('barangay-list');
+    if (!provinceInput || !cityInput || !barangayInput || !provinceList || !cityList || !barangayList) return;
+
+    const renderProvinceSuggestions = () => {
+        setAutocompleteItems(provinceList, getProvinceMatches(provinceInput.value.trim()), provinceInput.value.trim(), chosen => selectProvince(chosen, provinceInput, cityInput, barangayInput, cityList, barangayList));
+    };
+
+    const renderCitySuggestions = () => {
+        setAutocompleteItems(cityList, getCityMatches(provinceInput.value.trim(), cityInput.value.trim()), cityInput.value.trim(), chosen => selectCity(chosen, provinceInput, cityInput, barangayInput, barangayList));
+    };
+
+    const renderBarangaySuggestions = () => {
+        setAutocompleteItems(barangayList, getBarangayMatches(provinceInput.value.trim(), cityInput.value.trim(), barangayInput.value.trim()), barangayInput.value.trim(), chosen => selectBarangay(chosen, barangayInput));
+    };
+
+    provinceInput.addEventListener('input', () => {
+        cityInput.value = '';
+        barangayInput.value = '';
+        renderProvinceSuggestions();
+    });
+    provinceInput.addEventListener('focus', renderProvinceSuggestions);
+
+    cityInput.addEventListener('input', () => {
+        barangayInput.value = '';
+        renderCitySuggestions();
+    });
+    cityInput.addEventListener('focus', renderCitySuggestions);
+
+    barangayInput.addEventListener('input', renderBarangaySuggestions);
+    barangayInput.addEventListener('focus', renderBarangaySuggestions);
+
+    document.addEventListener('click', e => {
+        if (!e.target.closest('.search-box')) {
+            closeAllAutocompleteLists();
+        }
+    });
+
+    if (provinceInput.value && locationData[provinceInput.value]) {
+        setAutocompleteItems(cityList, getCityMatches(provinceInput.value.trim(), ''), '', chosen => selectCity(chosen, provinceInput, cityInput, barangayInput, barangayList));
+    }
+    if (provinceInput.value && cityInput.value && locationData[provinceInput.value] && locationData[provinceInput.value][cityInput.value]) {
+        setAutocompleteItems(barangayList, getBarangayMatches(provinceInput.value.trim(), cityInput.value.trim(), ''), '', chosen => selectBarangay(chosen, barangayInput));
+    }
+}
+
+document.addEventListener('DOMContentLoaded', initLocationSelectors);
+
 
 /* ── Alert Dismissal ─────────────────────────────────────────── */
 document.addEventListener('click', e => {
@@ -255,6 +441,20 @@ function clearFields(ids) {
     ids.forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
 }
 
+function enforceDigitsOnlyPhoneInputs() {
+    document.querySelectorAll('input[type="tel"][name*="phone"]').forEach(input => {
+        input.setAttribute('inputmode', 'numeric');
+        input.setAttribute('pattern', '[0-9]*');
+        input.addEventListener('input', () => {
+            const cleaned = input.value.replace(/\D+/g, '');
+            if (input.value !== cleaned) {
+                input.value = cleaned;
+            }
+        });
+    });
+}
+
+document.addEventListener('DOMContentLoaded', enforceDigitsOnlyPhoneInputs);
 
 /* ── Confirm Delete ──────────────────────────────────────────── */
 document.addEventListener('click', e => {

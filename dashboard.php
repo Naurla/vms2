@@ -37,7 +37,7 @@ $recentVisits = $db->query("
 $currentlyIn = $db->query("
     SELECT vl.id, v.full_name AS visitor_name,
            r.full_name AS resident_name, r.room_number,
-           vl.check_in_time, vl.relationship, vl.purpose
+           vl.check_in_time, vl.relationship, vl.purpose, vl.visit_code
     FROM visit_logs vl
     JOIN visitors v  ON v.id = vl.visitor_id
     JOIN residents r ON r.id = vl.resident_id
@@ -128,8 +128,9 @@ require_once __DIR__ . '/includes/header.php';
         <div style="font-size:13px;color:var(--accent-dark);font-weight:600">Share these links with visitors or open on a public terminal.</div>
     </div>
     <div style="display:flex;gap:10px;flex-wrap:wrap">
-        <a href="public/checkin.php" target="_blank" class="btn btn-primary btn-sm">✅ Kiosk Check-In ↗</a>
-        <a href="public/checkout.php" target="_blank" class="btn btn-secondary btn-sm">🚪 Kiosk Check-Out ↗</a>
+        <a href="index.php" target="_blank" class="btn btn-outline btn-sm">🏠 Kiosk Home ↗</a>
+        <a href="checkin.php" target="_blank" class="btn btn-primary btn-sm">✅ Kiosk Check-In ↗</a>
+        <a href="checkout.php" target="_blank" class="btn btn-secondary btn-sm">🚪 Kiosk Check-Out ↗</a>
     </div>
 </div>
 
@@ -157,7 +158,10 @@ require_once __DIR__ . '/includes/header.php';
             <?php foreach ($currentlyIn as $ci): ?>
             <tr>
                 <td>
-                    <div class="td-name"><?= e($ci['visitor_name']) ?></div>
+                    <div class="td-name">
+                        <?= e($ci['visitor_name']) ?>
+                        <span class="badge badge-gold" style="font-size:9.5px; margin-left:6px; font-weight:800" title="Check-Out Code"><?= e($ci['visit_code']) ?></span>
+                    </div>
                     <div class="td-sub"><?= e($ci['relationship'] ?: '—') ?></div>
                 </td>
                 <td>

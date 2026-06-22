@@ -23,7 +23,7 @@ function requireAuth(): void
 {
     if (!isLoggedIn()) {
         $base = defined('BASE_PATH') ? BASE_PATH : '';
-        header('Location: ' . $base . 'index.php?msg=login_required');
+        header('Location: ' . $base . 'login.php?msg=login_required');
         exit;
     }
 }
@@ -45,7 +45,7 @@ function currentUser(): array
 {
     return [
         'id'        => $_SESSION['user_id']        ?? null,
-        'username'  => $_SESSION['user_username']  ?? '',
+        'email'     => $_SESSION['user_email']     ?? '',
         'full_name' => $_SESSION['user_full_name'] ?? '',
         'role'      => $_SESSION['user_role']      ?? '',
     ];

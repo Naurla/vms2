@@ -1,21 +1,21 @@
 <?php
 /**
- * public/checkout.php – Public Visitor Self-Service Check-Out Kiosk
+ * checkout.php – Public Visitor Self-Service Check-Out Kiosk
  * No authentication required.
  */
-define('BASE_PATH', '../');
-require_once __DIR__ . '/../includes/config.php';
-require_once __DIR__ . '/../includes/db.php';
-require_once __DIR__ . '/../includes/functions.php';
+define('BASE_PATH', './');
+require_once __DIR__ . '/includes/config.php';
+require_once __DIR__ . '/includes/db.php';
+require_once __DIR__ . '/includes/functions.php';
 
 if (session_status() === PHP_SESSION_NONE) session_start();
 
 $db = getDB();
 
 // Get kiosk system user ID (same as check-in)
-$kioskUserId = (int)$db->query("SELECT id FROM users WHERE username = '__kiosk__' LIMIT 1")->fetchColumn();
+$kioskUserId = (int)$db->query("SELECT id FROM users WHERE email = 'kiosk@system.local' LIMIT 1")->fetchColumn();
 if (!$kioskUserId) {
-    $db->prepare("INSERT INTO users (username, password, full_name, role, is_active) VALUES ('__kiosk__', ?, 'Visitor Self Check-In', 'receptionist', 0)")
+    $db->prepare("INSERT INTO users (email, password, full_name, role, is_active) VALUES ('kiosk@system.local', ?, 'Visitor Self Check-In', 'receptionist', 0)")
        ->execute([password_hash('KIOSK_' . uniqid(), PASSWORD_BCRYPT)]);
     $kioskUserId = (int)$db->lastInsertId();
 }
@@ -24,23 +24,71 @@ $success      = false;
 $farewell     = null;
 
 // Handle checkout POST
-if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['log_id'])) {
-    $logId    = (int)$_POST['log_id'];
-    $verifyId = trim($_POST['verify_id'] ?? '');
+if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    $checkoutSuccess = false;
+    $log = null;
+    $logId = null;
 
-    // Fetch log entry and verify by ID number
-    $log = $db->prepare("
-        SELECT vl.*, v.full_name AS visitor_name, v.id_number,
-               r.full_name AS resident_name, r.room_number
-        FROM visit_logs vl
-        JOIN visitors v ON v.id = vl.visitor_id
-        JOIN residents r ON r.id = vl.resident_id
-        WHERE vl.id = ? AND vl.status = 'Checked In'
-    ");
-    $log->execute([$logId]);
-    $log = $log->fetch();
+    if (isset($_POST['log_id'])) {
+        $logId    = (int)$_POST['log_id'];
+        $verifyId = trim($_POST['verify_id'] ?? '');
 
-    if ($log && strtolower(trim($log['id_number'])) === strtolower($verifyId)) {
+        // Fetch log entry and verify by ID number or visit code
+        $log = $db->prepare("
+            SELECT vl.*, v.full_name AS visitor_name, v.id_number,
+                   r.full_name AS resident_name, r.room_number
+            FROM visit_logs vl
+            JOIN visitors v ON v.id = vl.visitor_id
+            JOIN residents r ON r.id = vl.resident_id
+            WHERE vl.id = ? AND vl.status = 'Checked In'
+        ");
+        $log->execute([$logId]);
+        $log = $log->fetch();
+
+        if ($log) {
+            $dbCode = strtolower(trim($log['visit_code'] ?? ''));
+            $dbId = strtolower(trim($log['id_number'] ?? ''));
+            $inputCode = strtolower($verifyId);
+
+            if (($dbCode !== '' && $dbCode === $inputCode) || $dbId === $inputCode) {
+                $checkoutSuccess = true;
+            } else {
+                $_SESSION['co_error'] = 'Check-Out Code or ID number does not match. Please try again.';
+                header('Location: checkout.php');
+                exit;
+            }
+        } else {
+            $_SESSION['co_error'] = 'Active check-in not found. Please try again.';
+            header('Location: checkout.php');
+            exit;
+        }
+    } elseif (isset($_POST['visit_code'])) {
+        $verifyId = trim($_POST['visit_code'] ?? '');
+
+        // Fetch log entry by visit code or ID number
+        $log = $db->prepare("
+            SELECT vl.*, v.full_name AS visitor_name, v.id_number,
+                   r.full_name AS resident_name, r.room_number
+            FROM visit_logs vl
+            JOIN visitors v ON v.id = vl.visitor_id
+            JOIN residents r ON r.id = vl.resident_id
+            WHERE (vl.visit_code = ? OR v.id_number = ?) AND vl.status = 'Checked In'
+            LIMIT 1
+        ");
+        $log->execute([$verifyId, $verifyId]);
+        $log = $log->fetch();
+
+        if ($log) {
+            $checkoutSuccess = true;
+            $logId = $log['id'];
+        } else {
+            $_SESSION['co_error'] = 'Active check-in not found for the code: ' . htmlspecialchars($verifyId);
+            header('Location: checkout.php');
+            exit;
+        }
+    }
+
+    if ($checkoutSuccess && $log && $logId) {
         $checkIn   = new DateTime($log['check_in_time']);
         $checkOut  = new DateTime();
         $duration  = (int)round(($checkOut->getTimestamp() - $checkIn->getTimestamp()) / 60);
@@ -59,10 +107,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['log_id'])) {
             'time'     => date('h:i A'),
         ];
         $success = true;
-    } else {
-        $_SESSION['co_error'] = 'ID number does not match. Please check your entry and try again.';
-        header('Location: checkout.php');
-        exit;
     }
 }
 
@@ -71,7 +115,7 @@ unset($_SESSION['co_error']);
 
 // Fetch all currently checked-in visitors
 $checkedIn = $db->query("
-    SELECT vl.id, vl.check_in_time,
+    SELECT vl.id, vl.check_in_time, vl.visit_code,
            v.full_name AS visitor_name,
            TIMESTAMPDIFF(MINUTE, vl.check_in_time, NOW()) AS elapsed,
            r.full_name AS resident_name, r.room_number
@@ -90,6 +134,7 @@ $checkedIn = $db->query("
     <meta name="description" content="Visitor Check-Out – Care Home for the Aged">
     <title>Visitor Check-Out – Care Home VMS</title>
     <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
+    <script src="https://unpkg.com/html5-qrcode" type="text/javascript"></script>
     <style>
         *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
         body{
@@ -256,13 +301,48 @@ $checkedIn = $db->query("
                 </div>
             </div>
             <div style="display:flex;justify-content:center;flex-wrap:wrap;gap:10px">
-                <button onclick="location.reload()" class="btn-new">🚪 Another Check-Out</button>
-                <a href="checkin.php" class="btn-checkin">✅ Go to Check-In</a>
+                <button onclick="location.href='checkout.php'" class="btn-new">🚪 Another Check-Out</button>
+                <a href="index.php" class="btn-checkin">🏠 Kiosk Home</a>
+                <a href="checkin.php" class="btn-checkin" style="background:#10b981;color:#fff;border-color:#10b981">✅ Go to Check-In</a>
             </div>
         </div>
 
     <?php else: ?>
         <!-- ── LIST ── -->
+        
+        <!-- ⚡ Quick Check-Out & QR Code Scanner Panel -->
+        <div style="background:#f4fbf7;border:2px solid #a7f3d0;border-radius:18px;padding:24px;margin-bottom:28px">
+            <h2 style="font-size:16px;font-weight:800;color:#065f46;margin-bottom:6px;display:flex;align-items:center;gap:6px">
+                ⚡ Quick Check-Out / QR Scan
+            </h2>
+            <p style="font-size:13px;color:#047857;font-weight:600;margin-bottom:18px">
+                Type in your Check-Out Code or scan your QR Code with your camera!
+            </p>
+            
+            <form method="POST" id="quick-checkout-form" style="display:flex;gap:12px;flex-wrap:wrap;align-items:center">
+                <div style="flex:1;min-width:240px;position:relative">
+                    <input type="text" name="visit_code" id="quick-code-input" 
+                           placeholder="Enter Check-Out Code (e.g. VMS-A9B4)" 
+                           style="width:100%;padding:12px 15px;border:2px solid #a7f3d0;border-radius:10px;font-size:15px;font-weight:700;color:#065f46" 
+                           required autocomplete="off">
+                </div>
+                <button type="submit" class="btn-checkout" style="padding:13px 24px;font-size:15px">
+                    🚪 Check Out
+                </button>
+                <button type="button" id="btn-scan-qr" class="btn-checkout" style="padding:13px 24px;font-size:15px;background:linear-gradient(135deg,#1e3a8a,#3b82f6);box-shadow:0 4px 12px rgba(59,130,246,0.35);display:inline-flex;align-items:center;gap:8px">
+                    📷 Scan QR Code
+                </button>
+            </form>
+
+            <!-- Camera Scan Container -->
+            <div id="scanner-container" style="display:none;margin-top:20px;text-align:center">
+                <div style="max-width:360px;margin:0 auto;border:3px solid #10b981;border-radius:12px;overflow:hidden;background:#000;position:relative">
+                    <div id="qr-reader" style="width:100%"></div>
+                    <button type="button" id="btn-stop-scan" style="position:absolute;top:10px;right:10px;background:rgba(239,68,68,0.85);color:#fff;border:none;border-radius:6px;padding:6px 12px;cursor:pointer;font-weight:700;font-size:12px;z-index:10">✕ Stop Camera</button>
+                </div>
+                <div id="scanner-status" style="margin-top:10px;font-size:13px;color:#047857;font-weight:700">Initializing camera...</div>
+            </div>
+        </div>
         <?php if ($coError): ?>
         <div class="alert alert-error">❌ <?= htmlspecialchars($coError) ?></div>
         <?php endif; ?>
@@ -281,7 +361,9 @@ $checkedIn = $db->query("
         <div class="visitor-row">
             <div class="visitor-avatar"><?= $initials ?></div>
             <div class="visitor-info">
-                <div class="visitor-name"><?= e($ci['visitor_name']) ?></div>
+                <div class="visitor-name">
+                    <?= e($ci['visitor_name']) ?>
+                </div>
                 <div class="visitor-sub">
                     Visiting: <?= e($ci['resident_name']) ?> — Room <?= e($ci['room_number']) ?>
                     &nbsp;·&nbsp; In since <?= date('h:i A', strtotime($ci['check_in_time'])) ?>
@@ -314,7 +396,9 @@ $checkedIn = $db->query("
 <div class="footer-note">
     Want to visit? <a href="checkin.php" class="staff-link">✅ Visitor Check-In</a>
     &nbsp;·&nbsp;
-    <a href="../index.php" class="staff-link">Staff Login</a>
+    <a href="index.php" class="staff-link">🏠 Kiosk Home</a>
+    &nbsp;·&nbsp;
+    <a href="login.php" class="staff-link">Staff Login</a>
 </div>
 
 <!-- Verify ID Modal -->
@@ -322,12 +406,12 @@ $checkedIn = $db->query("
     <div class="modal">
         <div class="modal-icon">🔐</div>
         <h2>Confirm Your Identity</h2>
-        <p class="modal-sub" id="modal-name-label">Please enter your ID number to confirm check-out.</p>
+        <p class="modal-sub" id="modal-name-label">Please enter your Check-Out Code or ID number to confirm check-out.</p>
         <form method="POST" id="checkout-form">
             <input type="hidden" name="log_id" id="modal-log-id" value="">
-            <label for="verify_id">Your ID Number</label>
+            <label for="verify_id">Your Check-Out Code / ID Number</label>
             <input type="text" id="verify_id" name="verify_id"
-                   placeholder="Enter your ID number exactly as registered" autofocus>
+                   placeholder="Enter Code (e.g. VMS-A9B4) or ID number" autofocus>
             <div class="modal-btns">
                 <button type="button" class="btn-cancel" onclick="closeModal()">✕ Cancel</button>
                 <button type="submit" class="btn-confirm">✅ Confirm Check-Out</button>
@@ -347,7 +431,7 @@ updateClock();
 
 function openCheckout(logId, name) {
     document.getElementById('modal-log-id').value = logId;
-    document.getElementById('modal-name-label').textContent = 'Checking out: ' + name + '. Enter your ID number to confirm.';
+    document.getElementById('modal-name-label').textContent = 'Checking out: ' + name + '. Enter your Check-Out Code or ID number to confirm.';
     document.getElementById('verify_id').value = '';
     document.getElementById('co-modal').classList.add('open');
     setTimeout(() => document.getElementById('verify_id').focus(), 100);
@@ -359,6 +443,68 @@ document.getElementById('co-modal').addEventListener('click', function(e) {
     if (e.target === this) closeModal();
 });
 document.addEventListener('keydown', e => { if (e.key === 'Escape') closeModal(); });
+
+// ── QR CODE CAMERA SCANNER LOGIC ──
+let html5QrCode = null;
+
+const btnScanQr = document.getElementById('btn-scan-qr');
+if (btnScanQr) {
+    btnScanQr.addEventListener('click', function() {
+        const container = document.getElementById('scanner-container');
+        const status = document.getElementById('scanner-status');
+        container.style.display = 'block';
+        status.textContent = 'Requesting camera access...';
+        status.style.color = '#047857';
+
+        container.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+
+        if (!html5QrCode) {
+            html5QrCode = new Html5Qrcode("qr-reader");
+        }
+
+        const qrCodeSuccessCallback = (decodedText, decodedResult) => {
+            document.getElementById('quick-code-input').value = decodedText;
+            status.textContent = '✓ QR Code scanned successfully! Processing check-out...';
+            status.style.color = '#10b981';
+            
+            html5QrCode.stop().then(() => {
+                container.style.display = 'none';
+                document.getElementById('quick-checkout-form').submit();
+            }).catch(err => {
+                document.getElementById('quick-checkout-form').submit();
+            });
+        };
+
+        const config = { fps: 10, qrbox: { width: 250, height: 250 } };
+
+        html5QrCode.start(
+            { facingMode: "environment" },
+            config,
+            qrCodeSuccessCallback
+        ).then(() => {
+            status.textContent = '🎥 Camera active. Place QR code inside the box.';
+        }).catch(err => {
+            console.error("Error starting scanner:", err);
+            status.textContent = '❌ Camera access error: ' + err;
+            status.style.color = '#ef4444';
+        });
+    });
+}
+
+const btnStopScan = document.getElementById('btn-stop-scan');
+if (btnStopScan) {
+    btnStopScan.addEventListener('click', function() {
+        if (html5QrCode && html5QrCode.isScanning) {
+            html5QrCode.stop().then(() => {
+                document.getElementById('scanner-container').style.display = 'none';
+            }).catch(err => {
+                console.error(err);
+            });
+        } else {
+            document.getElementById('scanner-container').style.display = 'none';
+        }
+    });
+}
 </script>
 </body>
 </html>

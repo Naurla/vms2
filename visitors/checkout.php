@@ -46,7 +46,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['log_id'])) {
 
 // Fetch all currently checked-in visitors
 $checkedIn = $db->query("
-    SELECT vl.id, vl.check_in_time, vl.relationship, vl.purpose,
+    SELECT vl.id, vl.check_in_time, vl.relationship, vl.purpose, vl.visit_code,
            v.full_name AS visitor_name, v.contact_phone,
            r.full_name AS resident_name, r.room_number,
            u.full_name AS staff_name,
@@ -101,7 +101,10 @@ require_once __DIR__ . '/../includes/header.php';
             <tr>
                 <td style="color:var(--text-muted);font-size:13px"><?= $i + 1 ?></td>
                 <td>
-                    <div class="td-name"><?= e($ci['visitor_name']) ?></div>
+                    <div class="td-name">
+                        <?= e($ci['visitor_name']) ?>
+                        <span class="badge badge-gold" style="font-size:9.5px; margin-left:6px; font-weight:800" title="Check-Out Code"><?= e($ci['visit_code']) ?></span>
+                    </div>
                     <?php if ($ci['contact_phone']): ?>
                     <div class="td-sub">📞 <?= e($ci['contact_phone']) ?></div>
                     <?php endif; ?>

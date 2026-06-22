@@ -19,6 +19,16 @@ function getDB(): PDO
                 PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
                 PDO::ATTR_EMULATE_PREPARES   => false,
             ]);
+
+            // Ensure visit_code column exists in visit_logs
+            try {
+                $pdo->query("SELECT visit_code FROM visit_logs LIMIT 1");
+            } catch (PDOException $ex) {
+                // Column doesn't exist, let's add it
+                $pdo->exec("ALTER TABLE visit_logs ADD COLUMN visit_code VARCHAR(20) NULL UNIQUE");
+                // Update any existing records to have a code based on their ID
+                $pdo->exec("UPDATE visit_logs SET visit_code = CONCAT('VMS-', id) WHERE visit_code IS NULL");
+            }
         } catch (PDOException $e) {
             $base = defined('BASE_PATH') ? BASE_PATH : '';
             $msg  = htmlspecialchars($e->getMessage(), ENT_QUOTES);

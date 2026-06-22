@@ -115,14 +115,24 @@ $initials = implode('', array_map(fn($w) => strtoupper($w[0]),
 
         <div class="nav-label">Visitor Kiosk</div>
 
-        <a href="<?= $bp ?>public/checkin.php" class="nav-item" target="_blank">
+        <a href="<?= $bp ?>index.php" class="nav-item" target="_blank">
+            <span class="nav-icon">🏠</span> Kiosk Home
+            <span style="font-size:9px;opacity:.6;margin-left:auto">↗</span>
+        </a>
+
+        <a href="<?= $bp ?>checkin.php" class="nav-item" target="_blank">
             <span class="nav-icon">✅</span> Kiosk Check-In
             <span style="font-size:9px;opacity:.6;margin-left:auto">↗</span>
         </a>
 
-        <a href="<?= $bp ?>public/checkout.php" class="nav-item" target="_blank">
+        <a href="<?= $bp ?>checkout.php" class="nav-item" target="_blank">
             <span class="nav-icon">🚪</span> Kiosk Check-Out
             <span style="font-size:9px;opacity:.6;margin-left:auto">↗</span>
+        </a>
+
+        <div class="nav-label">Session</div>
+        <a href="<?= $bp ?>logout.php" class="nav-item logout-nav">
+            <span class="nav-icon">🚪</span> Logout
         </a>
 
     </nav>
@@ -134,7 +144,7 @@ $initials = implode('', array_map(fn($w) => strtoupper($w[0]),
             <div class="user-name"><?= e($user['full_name']) ?></div>
             <div class="user-role"><?= e(ucfirst($user['role'])) ?></div>
         </div>
-        <a href="<?= $bp ?>logout.php" class="logout-btn" title="Logout">⏏</a>
+        <a href="<?= $bp ?>logout.php" class="logout-btn" title="Logout">🚪</a>
     </div>
 
 </aside>
@@ -163,10 +173,13 @@ $initials = implode('', array_map(fn($w) => strtoupper($w[0]),
         </div>
 
         <div class="header-right">
-            <div>
+            <div style="text-align: right">
                 <div class="live-clock" id="live-clock">--:--:--</div>
                 <div class="header-date" id="live-date"></div>
             </div>
+            <a href="<?= $bp ?>logout.php" class="btn btn-outline-danger btn-sm" style="display: flex; align-items: center; gap: 6px; font-weight: 700;">
+                🚪 Logout
+            </a>
         </div>
     </header>
 
