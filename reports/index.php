@@ -99,6 +99,22 @@ $activeNav   = 'reports';
 $breadcrumbs = [['label' => 'Reports']];
 
 $extraScripts = '
+<style>
+.print-only { display: none; }
+@media print {
+    .print-only { display: block !important; }
+    .sidebar, .top-header, .card.mb-20, .stats-grid, .card.mb-22, .purpose-bar, .no-print { display: none !important; }
+    .main-content { margin-left: 0 !important; padding: 0 !important; }
+    body { background: #fff !important; color: #000 !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+    .card { box-shadow: none !important; border: none !important; page-break-inside: avoid; margin-bottom: 30px !important; }
+    .card-header { padding: 0 0 10px 0 !important; border-bottom: 2px solid #000 !important; margin-bottom: 10px !important; }
+    .card-title { font-size: 16px !important; color: #000 !important; }
+    table { width: 100% !important; border-collapse: collapse !important; }
+    th { background: #f0f0f0 !important; color: #000 !important; border-bottom: 2px solid #000 !important; padding: 8px !important; }
+    td { border-bottom: 1px solid #ccc !important; padding: 8px !important; color: #000 !important; }
+    div[style*="display:grid"] { display: block !important; }
+}
+</style>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
 <script>
 const ctx = document.getElementById("visits-chart").getContext("2d");
@@ -133,6 +149,12 @@ new Chart(ctx, {
 require_once __DIR__ . '/../includes/header.php';
 ?>
 
+<!-- Print Header -->
+<div class="print-only" style="text-align:center; margin-bottom: 30px; border-bottom: 2px solid #000; padding-bottom: 15px;">
+    <h2 style="font-size:24px; font-weight:900; margin-bottom:5px;">Care Home VMS - Visit Report</h2>
+    <p style="font-size:14px; font-weight:600;">Report Period: <?= date("M d, Y", strtotime($dateFrom)) ?> – <?= date("M d, Y", strtotime($dateTo)) ?></p>
+</div>
+
 <!-- Date Filter -->
 <div class="card mb-20">
     <div class="card-body" style="padding:16px 22px">
@@ -145,10 +167,11 @@ require_once __DIR__ . '/../includes/header.php';
                 <label>To Date</label>
                 <input type="date" name="date_to" value="<?= e($dateTo) ?>">
             </div>
-            <div style="padding-bottom:1px;display:flex;gap:8px">
+            <div style="padding-bottom:1px;display:flex;gap:8px;flex:1;">
                 <button type="submit" class="btn btn-primary btn-sm">📊 Generate Report</button>
                 <a href="?date_from=<?= date('Y-m-01') ?>&date_to=<?= date('Y-m-d') ?>" class="btn btn-secondary btn-sm">This Month</a>
                 <a href="?date_from=<?= date('Y-m-d') ?>&date_to=<?= date('Y-m-d') ?>" class="btn btn-secondary btn-sm">Today</a>
+                <button type="button" onclick="window.print()" class="btn btn-accent btn-sm" style="margin-left:auto;">🖨️ Print Report</button>
             </div>
         </form>
     </div>
@@ -200,7 +223,7 @@ require_once __DIR__ . '/../includes/header.php';
 
 <!-- Most Visited Residents -->
 <div class="card">
-    <div class="card-header"><div class="card-title">👵 Most Visited Residents</div></div>
+    <div class="card-header"><div class="card-title"><span class="no-print">👵 </span>Most Visited Residents</div></div>
     <?php if ($byResident): ?>
     <div class="table-wrapper">
         <table>
@@ -223,7 +246,7 @@ require_once __DIR__ . '/../includes/header.php';
 
 <!-- Visits by Purpose -->
 <div class="card">
-    <div class="card-header"><div class="card-title">🎯 Visits by Purpose</div></div>
+    <div class="card-header"><div class="card-title"><span class="no-print">🎯 </span>Visits by Purpose</div></div>
     <?php if ($byPurpose): ?>
     <div class="table-wrapper">
         <table>
@@ -231,17 +254,17 @@ require_once __DIR__ . '/../includes/header.php';
             <tbody>
             <?php
             $maxCount = $byPurpose[0]['count'] ?? 1;
-            foreach ($byPurpose as $bp):
-                $pct = round(($bp['count'] / $maxCount) * 100);
+            foreach ($byPurpose as $purposeRow):
+                $pct = round(($purposeRow['count'] / $maxCount) * 100);
             ?>
             <tr>
-                <td><?= e($bp['purpose'] ?: 'Unspecified') ?></td>
+                <td><?= e($purposeRow['purpose'] ?: 'Unspecified') ?></td>
                 <td>
                     <div style="display:flex;align-items:center;gap:8px">
-                        <div style="flex:1;background:var(--border);border-radius:20px;height:8px;overflow:hidden">
+                        <div class="purpose-bar" style="flex:1;background:var(--border);border-radius:20px;height:8px;overflow:hidden">
                             <div style="width:<?= $pct ?>%;background:var(--primary);height:100%;border-radius:20px;transition:width .6s"></div>
                         </div>
-                        <span style="font-weight:700;color:var(--primary);min-width:24px"><?= $bp['count'] ?></span>
+                        <span style="font-weight:700;color:var(--primary);min-width:24px"><?= $purposeRow['count'] ?></span>
                     </div>
                 </td>
             </tr>
@@ -259,7 +282,7 @@ require_once __DIR__ . '/../includes/header.php';
 <!-- Completed Visits Table -->
 <div class="card">
     <div class="card-header">
-        <div class="card-title">✅ Completed Visits in Period</div>
+        <div class="card-title"><span class="no-print">✅ </span>Completed Visits in Period</div>
         <span style="color:var(--text-muted);font-size:13px"><?= plural(count($recentLogs), 'record') ?></span>
     </div>
     <?php if ($recentLogs): ?>

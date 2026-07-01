@@ -43,6 +43,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $medNotes   = post('medical_notes');
     $admDate    = post('admission_date') ?: null;
     $status     = post('status', 'Active');
+    $deactivationReason = trim(post('deactivation_reason'));
 
     if (!$fullName)   $errors[] = 'Full name is required.';
     if (!$roomNumber) $errors[] = 'Room number is required.';
@@ -56,15 +57,36 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
     }
 
+    // Prevent deactivation if the resident has ongoing visits
+    if (!$errors && $status !== 'Active') {
+        $ongoing = $db->prepare("SELECT COUNT(*) FROM visit_logs WHERE resident_id = ? AND status = 'Checked In'");
+        $ongoing->execute([$id]);
+        if ($ongoing->fetchColumn() > 0) {
+            $errors[] = 'Cannot deactivate this resident because they have ongoing visits. Please check out their visitors first.';
+        }
+        if ($deactivationReason === '') {
+            $errors[] = 'A reason for deactivation is required when setting the status to Inactive.';
+        }
+    }
+
     if (!$errors) {
         $db->prepare("
             UPDATE residents
             SET full_name=?, room_number=?, date_of_birth=?, gender=?,
                 emergency_contact_name=?, emergency_contact_phone=?,
                 emergency_contact_relation=?, medical_notes=?,
-                admission_date=?, status=?
+                admission_date=?, status=?, deactivation_reason=?
             WHERE id=?
-        ")->execute([$fullName, $roomNumber, $dob ?: null, $gender, $ecName, $ecPhone, $ecRelation, $medNotes, $admDate, $status, $id]);
+        ")->execute([$fullName, $roomNumber, $dob ?: null, $gender, $ecName, $ecPhone, $ecRelation, $medNotes, $admDate, $status, $status === 'Inactive' ? $deactivationReason : null, $id]);
+
+        $user = currentUser();
+        if ($status === 'Inactive' && ($resident['status'] ?? '') !== 'Inactive') {
+            logActivity($db, $user['id'], 'Deactivated Resident', "Name: {$fullName}, Reason: {$deactivationReason}", $id);
+        } elseif ($status === 'Active' && ($resident['status'] ?? '') !== 'Active') {
+            logActivity($db, $user['id'], 'Activated Resident', "Name: {$fullName}", $id);
+        } else {
+            logActivity($db, $user['id'], 'Edited Resident', "Name: {$fullName}", $id);
+        }
 
         setFlash('success', "Resident \"{$fullName}\" updated successfully.");
         redirect('../residents/list.php');
@@ -129,10 +151,14 @@ require_once __DIR__ . '/../includes/header.php';
                 </div>
                 <div class="form-group">
                     <label for="status">Status</label>
-                    <select id="status" name="status">
+                    <select id="status" name="status" onchange="document.getElementById('deactivation_reason_container').style.display = this.value === 'Inactive' ? 'block' : 'none';">
                         <option value="Active"   <?= ($resident['status'] ?? '') === 'Active'   ? 'selected' : '' ?>>Active</option>
                         <option value="Inactive" <?= ($resident['status'] ?? '') === 'Inactive' ? 'selected' : '' ?>>Inactive</option>
                     </select>
+                </div>
+                <div class="form-group full" id="deactivation_reason_container" style="display: <?= ($resident['status'] ?? '') === 'Inactive' ? 'block' : 'none' ?>;">
+                    <label for="deactivation_reason">Reason for Deactivation <span class="required-star">*</span></label>
+                    <textarea id="deactivation_reason" name="deactivation_reason" rows="2" placeholder="Explain why this resident is being deactivated"><?= $v('deactivation_reason') ?></textarea>
                 </div>
             </div>
 

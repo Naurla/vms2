@@ -23,7 +23,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['delete_id']) && isAdm
     if ($count->fetchColumn() > 0) {
         setFlash('warning', 'Cannot delete: this resident has visit records. Set them to Inactive instead.');
     } else {
+        $resNameStmt = $db->prepare("SELECT full_name FROM residents WHERE id = ?");
+        $resNameStmt->execute([$delId]);
+        $resName = $resNameStmt->fetchColumn();
+
         $db->prepare("DELETE FROM residents WHERE id = ?")->execute([$delId]);
+        
+        $user = currentUser();
+        logActivity($db, $user['id'], 'Removed Resident', "Name: {$resName}", $delId);
+        
         setFlash('success', 'Resident removed successfully.');
     }
     redirect('../residents/list.php');
@@ -34,7 +42,36 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['toggle_id'])) {
     verifyCsrf();
     $togId    = (int)$_POST['toggle_id'];
     $newStatus = $_POST['new_status'] ?? 'Active';
-    $db->prepare("UPDATE residents SET status=? WHERE id=?")->execute([$newStatus, $togId]);
+    
+    if ($newStatus !== 'Active') {
+        $count = $db->prepare("SELECT COUNT(*) FROM visit_logs WHERE resident_id = ? AND status = 'Checked In'");
+        $count->execute([$togId]);
+        if ($count->fetchColumn() > 0) {
+            setFlash('warning', 'Cannot deactivate: this resident has ongoing visits. Please check out their visitors first.');
+            redirect('../residents/list.php');
+        }
+        
+        $deactivationReason = trim($_POST['deactivation_reason'] ?? '');
+        if ($deactivationReason === '') {
+            setFlash('warning', 'A reason is required when deactivating a resident.');
+            redirect('../residents/list.php');
+        }
+        $db->prepare("UPDATE residents SET status=?, deactivation_reason=? WHERE id=?")->execute([$newStatus, $deactivationReason, $togId]);
+    } else {
+        $db->prepare("UPDATE residents SET status=?, deactivation_reason=NULL WHERE id=?")->execute([$newStatus, $togId]);
+    }
+
+    $resNameStmt = $db->prepare("SELECT full_name FROM residents WHERE id = ?");
+    $resNameStmt->execute([$togId]);
+    $resName = $resNameStmt->fetchColumn();
+
+    $user = currentUser();
+    if ($newStatus === 'Inactive') {
+        logActivity($db, $user['id'], 'Deactivated Resident', "Name: {$resName}, Reason: " . ($deactivationReason ?? ''), $togId);
+    } else {
+        logActivity($db, $user['id'], 'Activated Resident', "Name: {$resName}", $togId);
+    }
+
     setFlash('success', 'Resident status updated.');
     redirect('../residents/list.php');
 }
@@ -183,6 +220,10 @@ require_once __DIR__ . '/../includes/header.php';
             <?= csrfField() ?>
             <input type="hidden" name="toggle_id" id="status-toggle-id" value="">
             <input type="hidden" name="new_status" id="status-new-status" value="">
+            <div id="status-reason-wrapper" style="display:none; text-align:left; margin-bottom:15px; width:100%;">
+                <label for="status_deactivation_reason" style="font-size:12px; font-weight:bold; color:var(--text-secondary); display:block; margin-bottom:4px;">Reason for Deactivation <span class="required-star">*</span></label>
+                <textarea id="status_deactivation_reason" name="deactivation_reason" rows="3" style="width:100%; border:1px solid #e2eaf0; border-radius:var(--radius-sm); padding:8px;" placeholder="Explain why this resident is being deactivated"></textarea>
+            </div>
             <div class="modal-btns">
                 <button type="button" class="btn-cancel" onclick="closeModal('status-modal')">Cancel</button>
                 <button type="submit" class="btn-confirm" id="status-confirm-btn">Confirm</button>
@@ -221,12 +262,21 @@ function confirmStatusToggle(id, name, currentStatus) {
     document.getElementById('status-modal-icon').textContent = nextStatus === 'Inactive' ? '⛔' : '✅';
     
     const confirmBtn = document.getElementById('status-confirm-btn');
+    const reasonWrapper = document.getElementById('status-reason-wrapper');
+    const reasonInput = document.getElementById('status_deactivation_reason');
+    
     if (nextStatus === 'Inactive') {
         confirmBtn.className = 'btn-confirm btn-danger-confirm';
         confirmBtn.textContent = 'Deactivate';
+        reasonWrapper.style.display = 'block';
+        reasonInput.required = true;
+        reasonInput.value = '';
     } else {
         confirmBtn.className = 'btn-confirm';
         confirmBtn.textContent = 'Activate';
+        reasonWrapper.style.display = 'none';
+        reasonInput.required = false;
+        reasonInput.value = '';
     }
     
     openModal('status-modal');

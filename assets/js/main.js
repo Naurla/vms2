@@ -303,10 +303,10 @@ function initTableSearch(inputId, tableId) {
 /* ── Autocomplete Visitor Search ─────────────────────────────── */
 function initVisitorSearch(config) {
     const { inputId, listId, hiddenId, clearBtnId, endpoint } = config;
-    const input     = document.getElementById(inputId);
-    const list      = document.getElementById(listId);
-    const hidden    = document.getElementById(hiddenId);
-    const clearBtn  = document.getElementById(clearBtnId);
+    const input = document.getElementById(inputId);
+    const list = document.getElementById(listId);
+    const hidden = document.getElementById(hiddenId);
+    const clearBtn = document.getElementById(clearBtnId);
     if (!input || !list) return;
 
     let debounceTimer;
@@ -366,7 +366,7 @@ function initVisitorSearch(config) {
             list.innerHTML = '';
             list.classList.remove('open');
             clearBtn.classList.add('hidden');
-            clearFields(['visitor_phone','visitor_id_type','visitor_id_number']);
+            clearFields(['visitor_phone', 'visitor_id_type', 'visitor_id_number']);
         });
     }
 
@@ -382,8 +382,8 @@ function initVisitorSearch(config) {
 /* ── Autocomplete Resident Search ────────────────────────────── */
 function initResidentSearch(config) {
     const { inputId, listId, hiddenId, endpoint } = config;
-    const input  = document.getElementById(inputId);
-    const list   = document.getElementById(listId);
+    const input = document.getElementById(inputId);
+    const list = document.getElementById(listId);
     const hidden = document.getElementById(hiddenId);
     if (!input || !list) return;
 
@@ -519,7 +519,7 @@ document.addEventListener('click', e => {
 
 /* ── Filter Table by Select ──────────────────────────────────── */
 function initStatusFilter(selectId, tableId, colIndex) {
-    const sel   = document.getElementById(selectId);
+    const sel = document.getElementById(selectId);
     const table = document.getElementById(tableId);
     if (!sel || !table) return;
 
@@ -554,13 +554,191 @@ function startDashboardRefresh() {
     setInterval(async () => {
         try {
             const res = await fetch('api/dashboard_stats.php');
-            const d   = await res.json();
+            const d = await res.json();
             Object.entries(d).forEach(([key, val]) => {
                 const el = document.getElementById('stat-' + key);
                 if (el) el.textContent = val;
             });
-        } catch {}
+        } catch { }
     }, 60000);
 }
 
 document.addEventListener('DOMContentLoaded', startDashboardRefresh);
+
+/* ── Centralized ID Type Validation Templates ────────────────────────────────── */
+function initIDValidation(typeSelectId, numberInputId, hintId) {
+    const idTypesConfig = {
+        'National ID': {
+            placeholder: 'e.g. 1234-5678-9012-3456',
+            hint: '16-digit PhilID card number (XXXX-XXXX-XXXX-XXXX)',
+            regex: /^\d{4}-\d{4}-\d{4}-\d{4}$/,
+            format: (val) => {
+                const digits = val.replace(/\D/g, '').slice(0, 16);
+                const chunks = [];
+                for (let i = 0; i < digits.length; i += 4) {
+                    chunks.push(digits.substring(i, i + 4));
+                }
+                return chunks.join('-');
+            }
+        },
+        'Passport': {
+            placeholder: 'e.g. P1234567A',
+            hint: 'Passport (e.g. P/EB followed by 7 digits and optional letter)',
+            regex: /^[A-Z]{1,2}\d{7}[A-Z]?$/i,
+            format: (val) => val.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 10)
+        },
+        "Driver's License": {
+            placeholder: 'e.g. N12-34-567890',
+            hint: 'Driver\'s License: L00-00-000000',
+            regex: /^[A-Z]\d{2}-\d{2}-\d{6}$/i,
+            format: (val) => {
+                const clean = val.replace(/[^A-Za-z0-9]/g, '').slice(0, 9);
+                let formatted = '';
+                if (clean.length > 0) formatted += clean[0].toUpperCase();
+                if (clean.length > 1) formatted += clean.substring(1, 3).replace(/\D/g, '');
+                if (clean.length > 3) formatted += '-' + clean.substring(3, 5).replace(/\D/g, '');
+                if (clean.length > 5) formatted += '-' + clean.substring(5, 11).replace(/\D/g, '');
+                return formatted;
+            }
+        },
+        'Student ID': {
+            placeholder: 'e.g. 2024-12345',
+            hint: 'Student ID: YYYY-NNNNN',
+            regex: /^\d{4}-\d{5,6}$/,
+            format: (val) => {
+                const digits = val.replace(/\D/g, '').slice(0, 10);
+                if (digits.length > 4) return digits.substring(0, 4) + '-' + digits.substring(4);
+                return digits;
+            }
+        },
+        'UMID': {
+            placeholder: 'e.g. 1234-5678901-2',
+            hint: 'UMID: 0000-0000000-0',
+            regex: /^\d{4}-\d{7}-\d$/,
+            format: (val) => {
+                const digits = val.replace(/\D/g, '').slice(0, 12);
+                let formatted = '';
+                if (digits.length > 0) formatted += digits.substring(0, 4);
+                if (digits.length > 4) formatted += '-' + digits.substring(4, 11);
+                if (digits.length > 11) formatted += '-' + digits.substring(11, 12);
+                return formatted;
+            }
+        },
+        'SSS ID': {
+            placeholder: 'e.g. 12-3456789-0',
+            hint: 'SSS: 00-0000000-0',
+            regex: /^\d{2}-\d{7}-\d$/,
+            format: (val) => {
+                const digits = val.replace(/\D/g, '').slice(0, 10);
+                let formatted = '';
+                if (digits.length > 0) formatted += digits.substring(0, 2);
+                if (digits.length > 2) formatted += '-' + digits.substring(2, 9);
+                if (digits.length > 9) formatted += '-' + digits.substring(9, 10);
+                return formatted;
+            }
+        },
+        'TIN': {
+            placeholder: 'e.g. 123-456-789-000',
+            hint: 'TIN: 000-000-000-000',
+            regex: /^\d{3}-\d{3}-\d{3}-\d{3,5}$/,
+            format: (val) => {
+                const digits = val.replace(/\D/g, '').slice(0, 14);
+                let formatted = '';
+                if (digits.length > 0) formatted += digits.substring(0, 3);
+                if (digits.length > 3) formatted += '-' + digits.substring(3, 6);
+                if (digits.length > 6) formatted += '-' + digits.substring(6, 9);
+                if (digits.length > 9) formatted += '-' + digits.substring(9);
+                return formatted;
+            }
+        },
+        'PhilHealth ID': {
+            placeholder: 'e.g. 12-345678901-2',
+            hint: 'PhilHealth: 00-000000000-0',
+            regex: /^\d{2}-\d{9}-\d$/,
+            format: (val) => {
+                const digits = val.replace(/\D/g, '').slice(0, 12);
+                let formatted = '';
+                if (digits.length > 0) formatted += digits.substring(0, 2);
+                if (digits.length > 2) formatted += '-' + digits.substring(2, 11);
+                if (digits.length > 11) formatted += '-' + digits.substring(11, 12);
+                return formatted;
+            }
+        },
+        'Senior Citizen ID': {
+            placeholder: 'e.g. 12-3456',
+            hint: 'Senior Citizen ID (4-12 alphanumeric/dashes)',
+            regex: /^[A-Z0-9-]{4,12}$/i,
+            format: (val) => val.toUpperCase().replace(/[^A-Z0-9-]/g, '').slice(0, 12)
+        },
+        'Other': {
+            placeholder: 'Enter ID number',
+            hint: 'Min 4 characters',
+            regex: /^.{4,30}$/,
+            format: (val) => val.slice(0, 30)
+        }
+    };
+
+    const typeSelect = document.getElementById(typeSelectId);
+    const numberInput = document.getElementById(numberInputId);
+    const hint = document.getElementById(hintId);
+
+    if (!typeSelect || !numberInput) return;
+
+    window.validateID = function() {
+        if (!hint) return true;
+        const selectedType = typeSelect.value;
+        const value = numberInput.value.trim();
+
+        if (!selectedType) {
+            numberInput.placeholder = 'Enter ID number';
+            hint.textContent = '';
+            numberInput.style.borderColor = '';
+            return true;
+        }
+
+        const config = idTypesConfig[selectedType];
+        if (!config) return true;
+
+        numberInput.placeholder = config.placeholder;
+
+        if (!value) {
+            hint.textContent = `Format: ${config.hint}`;
+            hint.style.color = '#7f8c8d';
+            numberInput.style.borderColor = '';
+            return false;
+        }
+
+        const isValid = config.regex.test(value);
+        if (isValid) {
+            hint.textContent = `✓ Valid ${selectedType} format`;
+            hint.style.color = '#10b981';
+            numberInput.style.borderColor = '#10b981';
+        } else {
+            hint.textContent = `⚠️ Invalid format. Expected: ${config.hint}`;
+            hint.style.color = '#ef4444';
+            numberInput.style.borderColor = '#ef4444';
+        }
+        return isValid;
+    };
+
+    typeSelect.addEventListener('change', () => {
+        validateID();
+    });
+
+    numberInput.addEventListener('input', (e) => {
+        const selectedType = typeSelect.value;
+        const config = idTypesConfig[selectedType];
+        if (config && config.format) {
+            const start = e.target.selectionStart;
+            const prevLen = e.target.value.length;
+            e.target.value = config.format(e.target.value);
+            const postLen = e.target.value.length;
+            if (start !== null) {
+                e.target.setSelectionRange(start + (postLen - prevLen), start + (postLen - prevLen));
+            }
+        }
+        validateID();
+    });
+
+    validateID();
+}

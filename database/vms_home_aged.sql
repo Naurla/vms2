@@ -91,6 +91,39 @@ CREATE TABLE IF NOT EXISTS `visit_logs` (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- ────────────────────────────────────────────────────────────
+-- Table: visit_companions
+-- ────────────────────────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS `visit_companions` (
+    `id`           INT UNSIGNED  NOT NULL AUTO_INCREMENT,
+    `visit_log_id` INT UNSIGNED  NOT NULL,
+    `full_name`    VARCHAR(100)  NOT NULL,
+    `relationship` VARCHAR(100)  NOT NULL,
+    `created_at`   TIMESTAMP     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (`id`),
+    CONSTRAINT `fk_vc_visit_log` FOREIGN KEY (`visit_log_id`) REFERENCES `visit_logs` (`id`) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- ────────────────────────────────────────────────────────────
+-- Table: visitor_restrictions
+-- ────────────────────────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS `visitor_restrictions` (
+    `id` INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    `resident_id` INT UNSIGNED NOT NULL,
+    `requested_by_name` VARCHAR(100) NOT NULL,
+    `requested_by_relation` VARCHAR(50) NOT NULL,
+    `contact_info` VARCHAR(100) NULL,
+    `restriction_date` DATE NOT NULL,
+    `reason` TEXT NOT NULL,
+    `allowed_visitors` TEXT NULL,
+    `allowed_relationships` VARCHAR(255) NULL,
+    `bypass_code` VARCHAR(50) NULL,
+    `status` ENUM('Pending', 'Approved', 'Rejected') NOT NULL DEFAULT 'Pending',
+    `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT `fk_vr_resident` FOREIGN KEY (`resident_id`) REFERENCES `residents`(`id`) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+
+-- ────────────────────────────────────────────────────────────
 -- Sample Residents (6 demo records)
 -- ────────────────────────────────────────────────────────────
 INSERT INTO `residents`

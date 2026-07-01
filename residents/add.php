@@ -55,6 +55,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                  medical_notes, admission_date)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
         ")->execute([$fullName, $roomNumber, $dob ?: null, $gender, $ecName, $ecPhone, $ecRelation, $medNotes, $admDate]);
+        
+        $newResidentId = $db->lastInsertId();
+        
+        $user = currentUser();
+        logActivity($db, $user['id'], 'Added Resident', "Name: {$fullName}, Room: {$roomNumber}", $newResidentId);
 
         setFlash('success', "Resident \"{$fullName}\" (Room {$roomNumber}) added successfully.");
         redirect('../residents/list.php');

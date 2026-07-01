@@ -33,11 +33,13 @@ $recentVisits = $db->query("
     LIMIT 10
 ")->fetchAll();
 
-// ── Currently checked in ──────────────────────────────────────
 $currentlyIn = $db->query("
     SELECT vl.id, v.full_name AS visitor_name,
            r.full_name AS resident_name, r.room_number,
-           vl.check_in_time, vl.relationship, vl.purpose, vl.visit_code
+           vl.check_in_time, vl.relationship, vl.purpose, vl.visit_code,
+           (SELECT GROUP_CONCAT(CONCAT(vc.full_name, ' (', vc.relationship, ')') SEPARATOR ', ')
+            FROM visit_companions vc
+            WHERE vc.visit_log_id = vl.id) AS companion_details
     FROM visit_logs vl
     JOIN visitors v  ON v.id = vl.visitor_id
     JOIN residents r ON r.id = vl.resident_id
@@ -45,6 +47,7 @@ $currentlyIn = $db->query("
     ORDER BY vl.check_in_time DESC
     LIMIT 8
 ")->fetchAll();
+
 
 $pageTitle = 'Dashboard';
 $activeNav = 'dashboard';
@@ -162,8 +165,12 @@ require_once __DIR__ . '/includes/header.php';
                         <?= e($ci['visitor_name']) ?>
                         <span class="badge badge-gold" style="font-size:9.5px; margin-left:6px; font-weight:800" title="Check-Out Code"><?= e($ci['visit_code']) ?></span>
                     </div>
-                    <div class="td-sub"><?= e($ci['relationship'] ?: '—') ?></div>
-                </td>
+                    <div class="td-sub">
+                        <?= e($ci['relationship'] ?: '—') ?>
+                        <?php if ($ci['companion_details']): ?>
+                        <br><span style="color:var(--success)">👥 +<?= e($ci['companion_details']) ?></span>
+                        <?php endif; ?>
+                    </div>                </td>
                 <td>
                     <div class="td-name"><?= e($ci['resident_name']) ?></div>
                     <div class="td-sub">Room <?= e($ci['room_number']) ?></div>

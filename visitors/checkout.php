@@ -50,7 +50,10 @@ $checkedIn = $db->query("
            v.full_name AS visitor_name, v.contact_phone,
            r.full_name AS resident_name, r.room_number,
            u.full_name AS staff_name,
-           TIMESTAMPDIFF(MINUTE, vl.check_in_time, NOW()) AS elapsed
+           TIMESTAMPDIFF(MINUTE, vl.check_in_time, NOW()) AS elapsed,
+           (SELECT GROUP_CONCAT(CONCAT(vc.full_name, ' (', vc.relationship, ')') SEPARATOR ', ')
+            FROM visit_companions vc
+            WHERE vc.visit_log_id = vl.id) AS companion_details
     FROM visit_logs vl
     JOIN visitors v  ON v.id = vl.visitor_id
     JOIN residents r ON r.id = vl.resident_id
@@ -58,6 +61,7 @@ $checkedIn = $db->query("
     WHERE vl.status = 'Checked In'
     ORDER BY vl.check_in_time ASC
 ")->fetchAll();
+
 
 $pageTitle   = 'Check Out Visitor';
 $activeNav   = 'checkout';
@@ -108,7 +112,11 @@ require_once __DIR__ . '/../includes/header.php';
                     <?php if ($ci['contact_phone']): ?>
                     <div class="td-sub">📞 <?= e($ci['contact_phone']) ?></div>
                     <?php endif; ?>
-                </td>
+                    <?php if ($ci['companion_details']): ?>
+                    <div class="td-sub" style="font-size:11px; margin-top:2px; color:var(--primary)">
+                        👥 Companions: <?= e($ci['companion_details']) ?>
+                    </div>
+                    <?php endif; ?>                </td>
                 <td>
                     <div class="td-name"><?= e($ci['resident_name']) ?></div>
                     <div class="td-sub">Room <?= e($ci['room_number']) ?></div>

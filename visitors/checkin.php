@@ -53,9 +53,57 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $numCompanions = max(0, (int)post('num_companions', '0'));
     $notes         = post('notes');
 
+    $companionNames = $_POST['companion_name'] ?? [];
+    $companionRels  = $_POST['companion_relationship'] ?? [];
+    $validatedCompanions = [];
+
+    if ($numCompanions > 0) {
+        for ($i = 0; $i < $numCompanions; $i++) {
+            $cName = isset($companionNames[$i]) ? trim($companionNames[$i]) : '';
+            $cRel  = isset($companionRels[$i]) ? trim($companionRels[$i]) : '';
+            if ($cName === '') {
+                $errors[] = "Please provide the name of Companion #" . ($i + 1) . ".";
+            }
+            if ($cRel === '') {
+                $errors[] = "Please select the relationship for Companion #" . ($i + 1) . ".";
+            }
+            $validatedCompanions[] = [
+                'name' => $cName,
+                'relationship' => $cRel
+            ];
+        }
+    }
+
     if (!$visitorId)  $errors[] = 'Please select or search for a visitor.';
     if (!$residentId) $errors[] = 'Please select a resident to visit.';
     if (!$purpose)    $errors[] = 'Purpose of visit is required.';
+
+    // Check for restrictions
+    if (!$errors && $residentId && $visitorId) {
+        $vis = $db->prepare("SELECT full_name FROM visitors WHERE id = ?");
+        $vis->execute([$visitorId]);
+        $visitorName = $vis->fetchColumn();
+
+        $stmtRestr = $db->prepare("SELECT reason, allowed_visitors FROM visitor_restrictions WHERE resident_id = ? AND restriction_date = CURRENT_DATE() AND status = 'Approved'");
+        $stmtRestr->execute([$residentId]);
+        $restriction = $stmtRestr->fetch();
+        if ($restriction) {
+            $isAllowed = false;
+            if (!empty($restriction['allowed_visitors'])) {
+                $allowedList = array_map('trim', explode(',', strtolower($restriction['allowed_visitors'])));
+                $searchName = strtolower($visitorName);
+                foreach ($allowedList as $allowedName) {
+                    if ($allowedName && strpos($searchName, $allowedName) !== false) {
+                        $isAllowed = true;
+                        break;
+                    }
+                }
+            }
+            if (!$isAllowed) {
+                $errors[] = "Check-in is currently restricted for this resident today. Reason: " . $restriction['reason'];
+            }
+        }
+    }
 
     // Check visitor isn't already checked in
     if (!$errors) {
@@ -74,6 +122,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             VALUES (?, ?, ?, ?, ?, NOW(), ?, ?)
         ");
         $stmt->execute([$visitorId, $residentId, $relationship, $purpose, $numCompanions, $user['id'], $visitCode]);
+
+        $visitLogId = (int)$db->lastInsertId();
+        if ($numCompanions > 0 && !empty($validatedCompanions)) {
+            $compStmt = $db->prepare("INSERT INTO visit_companions (visit_log_id, full_name, relationship) VALUES (?, ?, ?)");
+            foreach ($validatedCompanions as $c) {
+                $compStmt->execute([$visitLogId, $c['name'], $c['relationship']]);
+            }
+        }
 
         // Get names for confirmation
         $vis = $db->prepare("SELECT full_name FROM visitors WHERE id = ?");
@@ -188,6 +244,13 @@ require_once __DIR__ . '/../includes/header.php';
                            min="0" max="20" value="0">
                 </div>
             </div>
+
+            <!-- Companion Details Container -->
+            <div id="companions_container" style="display:none; margin-bottom:16px; background:var(--primary-light); border-radius:var(--radius-sm); padding:16px;">
+                <h4 style="margin-top:0; margin-bottom:12px; color:var(--primary); font-size: 14px; font-weight:800;">👥 Companion Details</h4>
+                <div id="companions_fields_list" style="display: flex; flex-direction: column; gap: 12px;"></div>
+            </div>
+
 
             <div class="form-group mb-16">
                 <label for="purpose">Purpose of Visit <span class="required-star">*</span></label>
@@ -344,6 +407,67 @@ document.getElementById('checkin-form').addEventListener('submit', function() {
     
     // Run initially
     toggleCustomFields();
+})();
+
+// Dynamic Companion Fields Generation
+(function() {
+    const numCompanionsInput = document.getElementById('num_companions');
+    const companionsContainer = document.getElementById('companions_container');
+    const companionsFieldsList = document.getElementById('companions_fields_list');
+
+    function escapeHtml(string) {
+        return String(string).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+    }
+
+    function updateCompanionFields() {
+        if (!numCompanionsInput || !companionsContainer || !companionsFieldsList) return;
+        
+        const count = parseInt(numCompanionsInput.value) || 0;
+        if (count <= 0) {
+            companionsContainer.style.display = 'none';
+            companionsFieldsList.innerHTML = '';
+            return;
+        }
+        
+        // Save existing values if any
+        const existingNames = Array.from(companionsFieldsList.querySelectorAll('input[name="companion_name[]"]')).map(input => input.value);
+        const existingRelationships = Array.from(companionsFieldsList.querySelectorAll('select[name="companion_relationship[]"]')).map(select => select.value);
+        
+        companionsFieldsList.innerHTML = '';
+        companionsContainer.style.display = 'block';
+        
+        for (let i = 0; i < count; i++) {
+            const row = document.createElement('div');
+            row.className = 'companion-row';
+            row.style.cssText = 'display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px; padding: 14px; background: #fff; border: 2px solid #e2eaf0; border-radius: var(--radius-sm); margin-bottom: 8px; animation: slideDown 0.2s ease;';
+            
+            const nameVal = existingNames[i] || '';
+            const relVal = existingRelationships[i] || '';
+            
+            row.innerHTML = `
+                <div class="form-group" style="margin-bottom: 0;">
+                    <label style="font-size: 12px; font-weight: 700; color: var(--text-secondary);">Companion #${i + 1} Full Name <span class="required-star">*</span></label>
+                    <input type="text" name="companion_name[]" value="${escapeHtml(nameVal)}" placeholder="Enter full name" required style="padding: 8px 12px; font-size: 14px; border-radius: var(--radius-sm);">
+                </div>
+                <div class="form-group" style="margin-bottom: 0;">
+                    <label style="font-size: 12px; font-weight: 700; color: var(--text-secondary);">Relationship to Resident <span class="required-star">*</span></label>
+                    <select name="companion_relationship[]" required style="padding: 8px 12px; font-size: 14px; height: 41px; border-radius: var(--radius-sm);">
+                        <option value="">— Select —</option>
+                        ${['Son','Daughter','Spouse','Sibling','Grandchild','Nephew/Niece','Friend','Medical Staff','Volunteer','Other'].map(r => 
+                            `<option value="${r}" ${relVal === r ? 'selected' : ''}>${r}</option>`
+                        ).join('')}
+                    </select>
+                </div>
+            `;
+            companionsFieldsList.appendChild(row);
+        }
+    }
+
+    if (numCompanionsInput) {
+        numCompanionsInput.addEventListener('input', updateCompanionFields);
+        numCompanionsInput.addEventListener('change', updateCompanionFields);
+        updateCompanionFields();
+    }
 })();
 </script>
 

@@ -99,11 +99,21 @@ $initials = implode('', array_map(fn($w) => strtoupper($w[0]),
             <span class="nav-icon">➕</span> Add Resident
         </a>
 
+        <a href="<?= $bp ?>restrictions/list.php"
+           class="nav-item <?= $active === 'restrictions' ? 'active' : '' ?>">
+            <span class="nav-icon">🛡️</span> Restrictions
+        </a>
+
         <div class="nav-label">Admin – Reports</div>
 
         <a href="<?= $bp ?>reports/index.php"
            class="nav-item <?= $active === 'reports' ? 'active' : '' ?>">
             <span class="nav-icon">📈</span> Reports
+        </a>
+
+        <a href="<?= $bp ?>reports/logs.php"
+           class="nav-item <?= $active === 'reports-logs' ? 'active' : '' ?>">
+            <span class="nav-icon">📑</span> Activity Logs
         </a>
 
         <a href="<?= $bp ?>users/list.php"

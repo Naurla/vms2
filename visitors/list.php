@@ -25,12 +25,14 @@ if ($filterDate)     { $where[] = 'DATE(vl.check_in_time) = ?'; $params[] = $fil
 if ($filterResident) { $where[] = 'vl.resident_id = ?';         $params[] = $filterResident; }
 
 $whereStr = implode(' AND ', $where);
-
 $stmt = $db->prepare("
     SELECT vl.*, v.full_name AS visitor_name, v.id_type, v.id_number, v.contact_phone,
            r.full_name AS resident_name, r.room_number,
            u.full_name AS staff_checkin,
-           u2.full_name AS staff_checkout
+           u2.full_name AS staff_checkout,
+           (SELECT GROUP_CONCAT(CONCAT(vc.full_name, ' (', vc.relationship, ')') SEPARATOR ', ')
+            FROM visit_companions vc
+            WHERE vc.visit_log_id = vl.id) AS companion_details
     FROM visit_logs vl
     JOIN visitors v  ON v.id = vl.visitor_id
     JOIN residents r ON r.id = vl.resident_id
@@ -126,7 +128,11 @@ require_once __DIR__ . '/../includes/header.php';
                     <?php if ($log['contact_phone']): ?>
                     <div class="td-sub">📞 <?= e($log['contact_phone']) ?></div>
                     <?php endif; ?>
-                </td>
+                    <?php if ($log['companion_details']): ?>
+                    <div class="td-sub" style="font-size:11px; margin-top:2px; color:var(--primary)">
+                        👥 Companions: <?= e($log['companion_details']) ?>
+                    </div>
+                    <?php endif; ?>                </td>
                 <td style="font-size:12px;color:var(--text-muted)">
                     <?= e($log['id_type']) ?><br><?= e($log['id_number']) ?>
                 </td>

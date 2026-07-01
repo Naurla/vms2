@@ -29,6 +29,44 @@ function getDB(): PDO
                 // Update any existing records to have a code based on their ID
                 $pdo->exec("UPDATE visit_logs SET visit_code = CONCAT('VMS-', id) WHERE visit_code IS NULL");
             }
+
+            // Ensure visit_companions table exists
+            try {
+                $pdo->query("SELECT 1 FROM visit_companions LIMIT 1");
+            } catch (PDOException $ex) {
+                $pdo->exec("
+                    CREATE TABLE IF NOT EXISTS `visit_companions` (
+                        `id`           INT UNSIGNED  NOT NULL AUTO_INCREMENT,
+                        `visit_log_id` INT UNSIGNED  NOT NULL,
+                        `full_name`    VARCHAR(100)  NOT NULL,
+                        `relationship` VARCHAR(100)  NOT NULL,
+                        `created_at`   TIMESTAMP     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                        PRIMARY KEY (`id`),
+                        CONSTRAINT `fk_vc_visit_log` FOREIGN KEY (`visit_log_id`) REFERENCES `visit_logs` (`id`) ON DELETE CASCADE
+                    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+                ");
+            }
+
+            // Ensure visitor_restrictions table exists
+            try {
+                $pdo->query("SELECT 1 FROM visitor_restrictions LIMIT 1");
+            } catch (PDOException $ex) {
+                $pdo->exec("
+                    CREATE TABLE IF NOT EXISTS `visitor_restrictions` (
+                        `id` INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+                        `resident_id` INT UNSIGNED NOT NULL,
+                        `requested_by_name` VARCHAR(100) NOT NULL,
+                        `requested_by_relation` VARCHAR(50) NOT NULL,
+                        `contact_info` VARCHAR(100) NULL,
+                        `restriction_date` DATE NOT NULL,
+                        `reason` TEXT NOT NULL,
+                        `allowed_visitors` TEXT NULL,
+                        `status` ENUM('Pending', 'Approved', 'Rejected') NOT NULL DEFAULT 'Pending',
+                        `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                        CONSTRAINT `fk_vr_resident` FOREIGN KEY (`resident_id`) REFERENCES `residents`(`id`) ON DELETE CASCADE
+                    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+                ");
+            }
         } catch (PDOException $e) {
             $base = defined('BASE_PATH') ? BASE_PATH : '';
             $msg  = htmlspecialchars($e->getMessage(), ENT_QUOTES);

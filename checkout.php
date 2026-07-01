@@ -118,13 +118,17 @@ $checkedIn = $db->query("
     SELECT vl.id, vl.check_in_time, vl.visit_code,
            v.full_name AS visitor_name,
            TIMESTAMPDIFF(MINUTE, vl.check_in_time, NOW()) AS elapsed,
-           r.full_name AS resident_name, r.room_number
+           r.full_name AS resident_name, r.room_number,
+           (SELECT GROUP_CONCAT(CONCAT(vc.full_name, ' (', vc.relationship, ')') SEPARATOR ', ')
+            FROM visit_companions vc
+            WHERE vc.visit_log_id = vl.id) AS companion_details
     FROM visit_logs vl
     JOIN visitors v ON v.id = vl.visitor_id
     JOIN residents r ON r.id = vl.resident_id
     WHERE vl.status = 'Checked In'
     ORDER BY vl.check_in_time ASC
 ")->fetchAll();
+
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -367,7 +371,13 @@ $checkedIn = $db->query("
                 <div class="visitor-sub">
                     Visiting: <?= e($ci['resident_name']) ?> — Room <?= e($ci['room_number']) ?>
                     &nbsp;·&nbsp; In since <?= date('h:i A', strtotime($ci['check_in_time'])) ?>
+                    <?php if ($ci['companion_details']): ?>
+                    <div style="font-size:12px; margin-top:3px; color:#10b981; font-weight:700">
+                        👥 Companions: <?= e($ci['companion_details']) ?>
+                    </div>
+                    <?php endif; ?>
                 </div>
+
             </div>
             <div class="visitor-time">
                 <div class="time-badge <?= $timeClass ?>"><?= $timeLabel ?> inside</div><br>

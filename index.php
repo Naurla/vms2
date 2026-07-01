@@ -296,6 +296,8 @@ if (session_status() === PHP_SESSION_NONE) session_start();
 <div class="footer-note">
     Self-Service Kiosk Terminal
     &nbsp;·&nbsp;
+    <a href="request_restriction.php" class="staff-link">Request Restriction</a>
+    &nbsp;·&nbsp;
     <a href="login.php" class="staff-link">Staff Login</a>
 </div>
 

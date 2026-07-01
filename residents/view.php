@@ -19,17 +19,30 @@ $resident->execute([$id]);
 $resident = $resident->fetch();
 if (!$resident) { setFlash('error', 'Resident not found.'); redirect('../residents/list.php'); }
 
-// Visit history
 $visits = $db->prepare("
-    SELECT vl.*, v.full_name AS visitor_name, v.contact_phone, v.id_type
+    SELECT vl.*, v.full_name AS visitor_name, v.contact_phone, v.id_type,
+           (SELECT GROUP_CONCAT(CONCAT(vc.full_name, ' (', vc.relationship, ')') SEPARATOR ', ')
+            FROM visit_companions vc
+            WHERE vc.visit_log_id = vl.id) AS companion_details
     FROM visit_logs vl
     JOIN visitors v ON v.id = vl.visitor_id
     WHERE vl.resident_id = ?
     ORDER BY vl.check_in_time DESC
     LIMIT 50
 ");
+
 $visits->execute([$id]);
 $visits = $visits->fetchAll();
+
+$residentLogs = $db->prepare("
+    SELECT al.*, u.full_name AS user_name, u.role AS user_role
+    FROM activity_logs al
+    LEFT JOIN users u ON u.id = al.user_id
+    WHERE al.resident_id = ?
+    ORDER BY al.created_at DESC
+");
+$residentLogs->execute([$id]);
+$residentLogs = $residentLogs->fetchAll();
 
 // Stats
 $totalVisits  = count($visits);
@@ -131,6 +144,16 @@ require_once __DIR__ . '/../includes/header.php';
             <?php endif; ?>
         </div>
     </div>
+    
+    <?php if ($resident['status'] === 'Inactive' && !empty($resident['deactivation_reason'])): ?>
+    <!-- Deactivation Reason -->
+    <div class="card" style="border:1px solid var(--danger);">
+        <div class="card-header" style="background-color:#ffeaea;"><div class="card-title" style="color:var(--danger);">⛔ Deactivation Reason</div></div>
+        <div class="card-body">
+            <p style="font-size:14px;line-height:1.6;color:var(--danger);"><?= nl2br(e($resident['deactivation_reason'])) ?></p>
+        </div>
+    </div>
+    <?php endif; ?>
 
 </div>
 
@@ -160,7 +183,11 @@ require_once __DIR__ . '/../includes/header.php';
                     <?php if ($v['contact_phone']): ?>
                     <div class="td-sub">📞 <?= e($v['contact_phone']) ?></div>
                     <?php endif; ?>
-                </td>
+                    <?php if ($v['companion_details']): ?>
+                    <div class="td-sub" style="font-size:11px; margin-top:2px; color:var(--primary)">
+                        👥 Companions: <?= e($v['companion_details']) ?>
+                    </div>
+                    <?php endif; ?>                </td>
                 <td style="font-size:13px">
                     <?= e($v['relationship'] ?: '—') ?>
                     <?php if ($v['purpose']): ?>
@@ -180,6 +207,53 @@ require_once __DIR__ . '/../includes/header.php';
         <div class="empty-icon">📋</div>
         <h3>No visits recorded yet</h3>
         <p>This resident hasn't had any visitors logged yet.</p>
+    </div>
+    <?php endif; ?>
+</div>
+
+<!-- Resident Activity Log -->
+<div class="card" style="margin-top: 22px;">
+    <div class="card-header">
+        <div class="card-title">📑 Resident Activity Log</div>
+    </div>
+    <?php if ($residentLogs): ?>
+    <div class="table-wrapper">
+        <table>
+            <thead>
+                <tr>
+                    <th>Timestamp</th>
+                    <th>User</th>
+                    <th>Action</th>
+                    <th>Details</th>
+                </tr>
+            </thead>
+            <tbody>
+            <?php foreach ($residentLogs as $log): ?>
+            <tr>
+                <td style="font-size:12px;color:var(--text-muted);white-space:nowrap;"><?= fmtDateTime($log['created_at']) ?></td>
+                <td>
+                    <?php if ($log['user_name']): ?>
+                        <div style="font-weight:700;"><?= e($log['user_name']) ?></div>
+                    <?php else: ?>
+                        <span style="color:var(--text-muted);font-style:italic;">System / Deleted User</span>
+                    <?php endif; ?>
+                </td>
+                <td>
+                    <span class="badge badge-primary"><?= e($log['action']) ?></span>
+                </td>
+                <td style="font-size:13px;">
+                    <?= nl2br(e($log['details'])) ?>
+                </td>
+            </tr>
+            <?php endforeach; ?>
+            </tbody>
+        </table>
+    </div>
+    <?php else: ?>
+    <div class="empty-state">
+        <div class="empty-icon">📑</div>
+        <h3>No activity logs yet</h3>
+        <p>There are no recorded system actions for this resident.</p>
     </div>
     <?php endif; ?>
 </div>

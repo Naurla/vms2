@@ -44,6 +44,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $hash = password_hash($password, PASSWORD_BCRYPT);
         $db->prepare("INSERT INTO users (email, password, full_name, role) VALUES (?,?,?,?)")
            ->execute([$email, $hash, $fullName, $role]);
+           
+        $user = currentUser();
+        logActivity($db, $user['id'], 'Added User', "Name: {$fullName}, Role: {$role}");
+        
         setFlash('success', "User \"{$fullName}\" created successfully.");
         redirect('../users/list.php');
     }

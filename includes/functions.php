@@ -129,3 +129,17 @@ function generateVisitCode(\PDO $db): string
     } while ($exists);
     return $code;
 }
+
+/**
+ * Log a system activity.
+ */
+function logActivity(\PDO $db, ?int $userId, string $action, string $details = '', ?int $residentId = null): void
+{
+    try {
+        $stmt = $db->prepare("INSERT INTO activity_logs (user_id, resident_id, action, details, created_at) VALUES (?, ?, ?, ?, NOW())");
+        $stmt->execute([$userId, $residentId, $action, $details]);
+    } catch (\Exception $e) {
+        // Silently fail if logging fails so it doesn't break the main application flow
+        error_log("Activity Log Error: " . $e->getMessage());
+    }
+}

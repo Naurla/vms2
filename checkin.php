@@ -73,6 +73,27 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $numCompanions = max(0, (int)post('num_companions', '0'));
     $notes         = post('notes');
 
+    $companionNames = isset($_POST['companion_names']) ? $_POST['companion_names'] : [];
+    $companionRels  = isset($_POST['companion_rels']) ? $_POST['companion_rels'] : [];
+    
+    $validatedCompanions = [];
+    if ($numCompanions > 0) {
+        for ($i = 0; $i < $numCompanions; $i++) {
+            $cName = isset($companionNames[$i]) ? trim($companionNames[$i]) : '';
+            $cRel  = isset($companionRels[$i]) ? trim($companionRels[$i]) : '';
+            if ($cName === '') {
+                $errors[] = "Please provide the name of Companion #" . ($i + 1) . ".";
+            }
+            if ($cRel === '') {
+                $errors[] = "Please select the relationship for Companion #" . ($i + 1) . ".";
+            }
+            $validatedCompanions[] = [
+                'name' => $cName,
+                'relationship' => $cRel
+            ];
+        }
+    }
+
     if (!$fullName)   $errors[] = 'Your full name is required.';
     if (!$idType)     $errors[] = 'Please select your ID type.';
     if (!$idNumber)   $errors[] = 'Your ID number is required.';
@@ -107,6 +128,29 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
     if (!$purpose)    $errors[] = 'Please select your purpose of visit.';
 
+    // Check for restrictions
+    if (!$errors && $residentId) {
+        $stmtRestr = $db->prepare("SELECT reason, allowed_visitors FROM visitor_restrictions WHERE resident_id = ? AND restriction_date = CURRENT_DATE() AND status = 'Approved'");
+        $stmtRestr->execute([$residentId]);
+        $restriction = $stmtRestr->fetch();
+        if ($restriction) {
+            $isAllowed = false;
+            if (!empty($restriction['allowed_visitors'])) {
+                $allowedList = array_map('trim', explode(',', strtolower($restriction['allowed_visitors'])));
+                $searchName = strtolower($fullName);
+                foreach ($allowedList as $allowedName) {
+                    if ($allowedName && strpos($searchName, $allowedName) !== false) {
+                        $isAllowed = true;
+                        break;
+                    }
+                }
+            }
+            if (!$isAllowed) {
+                $errors[] = "Check-in is currently restricted for this resident today. Reason: " . $restriction['reason'];
+            }
+        }
+    }
+
     if (!$errors) {
         $address = trim(implode(', ', array_filter([$address, $barangay, $city, $province])));
 
@@ -140,6 +184,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 (visitor_id, resident_id, relationship, purpose, num_companions, check_in_time, checked_in_by, notes, visit_code)
             VALUES (?, ?, ?, ?, ?, NOW(), ?, ?, ?)
         ")->execute([$visitorId, $residentId, $relationship, $purpose, $numCompanions, $kioskUserId, $notes, $visitCode]);
+        $visitLogId = (int)$db->lastInsertId();
+
+        if (!empty($validatedCompanions)) {
+            $stmtC = $db->prepare("INSERT INTO visit_companions (visit_log_id, full_name, relationship) VALUES (?, ?, ?)");
+            foreach ($validatedCompanions as $comp) {
+                $stmtC->execute([$visitLogId, $comp['name'], $comp['relationship']]);
+            }
+        }
 
         $res = $db->prepare("SELECT full_name, room_number FROM residents WHERE id=?");
         $res->execute([$residentId]);
@@ -153,6 +205,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             'date'      => date('F d, Y'),
             'purpose'   => $purpose,
             'companions'=> $numCompanions,
+            'companionList' => $validatedCompanions,
             'visit_code'=> $visitCode,
         ];
         $success = true;
@@ -487,14 +540,21 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 <?php if ($confirmation['companions'] > 0): ?>
                 <div class="confirm-row">
                     <span class="confirm-icon">👥</span>
-                    <div><div class="confirm-label">Companions</div><div class="confirm-value"><?= $confirmation['companions'] ?> person(s)</div></div>
+                    <div><div class="confirm-label">Companions (<?= $confirmation['companions'] ?>)</div><div class="confirm-value"><?php 
+                            if (!empty($confirmation['companionList'])) {
+                                $cNames = array_map(function($c) { return e($c['name']); }, $confirmation['companionList']);
+                                echo implode(', ', $cNames);
+                            } else {
+                                echo $confirmation['companions'] . ' person(s)';
+                            }
+                        ?></div></div>
                 </div>
                 <?php endif; ?>
             </div>
 
             <div style="display:flex;justify-content:center;flex-wrap:wrap;gap:10px">
                 <button onclick="location.href='checkin.php'" class="btn-new">✅ New Check-In</button>
-                <button onclick="printCheckinReceipt('<?= e(addslashes($confirmation['visit_code'])) ?>', '<?= e(addslashes($confirmation['name'])) ?>', '<?= e(addslashes($confirmation['resident'])) ?>', '<?= e(addslashes($confirmation['room'])) ?>', '<?= e(addslashes($confirmation['purpose'])) ?>', '<?= e(addslashes($confirmation['time'] . ' · ' . $confirmation['date'])) ?>', <?= (int)$confirmation['companions'] ?>)" class="btn-new" style="background:#c8a45e;color:#fff;">🖨️ Print Receipt</button>
+                <button onclick="printCheckinReceipt('<?= e(addslashes($confirmation['visit_code'])) ?>', '<?= e(addslashes($confirmation['name'])) ?>', '<?= e(addslashes($confirmation['resident'])) ?>', '<?= e(addslashes($confirmation['room'])) ?>', '<?= e(addslashes($confirmation['purpose'])) ?>', '<?= e(addslashes($confirmation['time'] . ' · ' . $confirmation['date'])) ?>', '<?= !empty($confirmation['companionList']) ? e(addslashes($confirmation['companions'] . ' (' . implode(', ', array_map(function($c) { return $c['name']; }, $confirmation['companionList'])) . ')')) : $confirmation['companions'] ?>')" class="btn-new" style="background:#c8a45e;color:#fff;">🖨️ Print Receipt</button>
                 <a href="checkout.php" class="btn-checkout">🚪 Go to Check-Out</a>
             </div>
 
@@ -633,6 +693,37 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                            min="0" max="20" value="<?= e(post('num_companions', '0')) ?>">
                 </div>
             </div>
+            
+            <div class="form-group full" id="companions-container" style="display: <?= (int)post('num_companions', '0') > 0 ? 'block' : 'none' ?>; margin-top: 10px;">
+                <p class="section-label" style="font-size:14px; margin-bottom:10px;">Companion Details</p>
+                <div id="companions-list">
+                    <?php 
+                    $numComp = max(0, (int)post('num_companions', '0'));
+                    for ($i = 0; $i < $numComp; $i++): 
+                        $cName = isset($companionNames[$i]) ? $companionNames[$i] : '';
+                        $cRel  = isset($companionRels[$i]) ? $companionRels[$i] : '';
+                    ?>
+                    <div class="companion-entry" style="background:#f8fafc; padding:10px; border-radius:6px; margin-bottom:10px; border:1px solid #e2eaf0;">
+                        <p style="font-weight:700; font-size:12px; margin-bottom:8px; color:#5a6a77;">Companion <?= $i + 1 ?></p>
+                        <div class="form-grid" style="grid-template-columns: 1fr 1fr;">
+                            <div class="form-group">
+                                <label style="font-size:11px;">Full Name <span class="req">*</span></label>
+                                <input type="text" name="companion_names[]" value="<?= e($cName) ?>" required placeholder="Name">
+                            </div>
+                            <div class="form-group">
+                                <label style="font-size:11px;">Relationship <span class="req">*</span></label>
+                                <select name="companion_rels[]" required>
+                                    <option value="">— Select —</option>
+                                    <?php foreach (['Spouse','Child','Parent','Sibling','Relative','Friend','Caregiver','Other'] as $r): ?>
+                                        <option value="<?= e($r) ?>" <?= $cRel === $r ? 'selected' : '' ?>><?= e($r) ?></option>
+                                    <?php endforeach; ?>
+                                </select>
+                            </div>
+                        </div>
+                    </div>
+                    <?php endfor; ?>
+                </div>
+            </div>
 
             <p class="section-label">🎯 Visit Details</p>
             <div class="form-grid">
@@ -711,222 +802,17 @@ function updateClock() {
 setInterval(updateClock, 1000);
 updateClock();
 
-const idTypesConfig = {
-    'National ID': {
-        placeholder: 'e.g. 1234-5678-9012-3456',
-        hint: '16-digit PhilID card number (XXXX-XXXX-XXXX-XXXX)',
-        regex: /^\d{4}-\d{4}-\d{4}-\d{4}$/,
-        format: (val) => {
-            const digits = val.replace(/\D/g, '').slice(0, 16);
-            const chunks = [];
-            for (let i = 0; i < digits.length; i += 4) {
-                chunks.push(digits.substring(i, i + 4));
-            }
-            return chunks.join('-');
-        }
-    },
-    'Passport': {
-        placeholder: 'e.g. P1234567A',
-        hint: 'Passport (e.g. P/EB followed by 7 digits and optional letter)',
-        regex: /^[A-Z]{1,2}\d{7}[A-Z]?$/i,
-        format: (val) => {
-            return val.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 10);
-        }
-    },
-    "Driver's License": {
-        placeholder: 'e.g. N12-34-567890',
-        hint: 'Driver\'s License: L00-00-000000',
-        regex: /^[A-Z]\d{2}-\d{2}-\d{6}$/i,
-        format: (val) => {
-            const clean = val.replace(/[^A-Za-z0-9]/g, '').slice(0, 9);
-            let formatted = '';
-            if (clean.length > 0) {
-                formatted += clean[0].toUpperCase();
-            }
-            if (clean.length > 1) {
-                formatted += clean.substring(1, 3).replace(/\D/g, '');
-            }
-            if (clean.length > 3) {
-                formatted += '-' + clean.substring(3, 5).replace(/\D/g, '');
-            }
-            if (clean.length > 5) {
-                formatted += '-' + clean.substring(5, 11).replace(/\D/g, '');
-            }
-            return formatted;
-        }
-    },
-    'Student ID': {
-        placeholder: 'e.g. 2024-12345',
-        hint: 'Student ID: YYYY-NNNNN',
-        regex: /^\d{4}-\d{5,6}$/,
-        format: (val) => {
-            const digits = val.replace(/\D/g, '').slice(0, 10);
-            if (digits.length > 4) {
-                return digits.substring(0, 4) + '-' + digits.substring(4);
-            }
-            return digits;
-        }
-    },
-    'UMID': {
-        placeholder: 'e.g. 1234-5678901-2',
-        hint: 'UMID: 0000-0000000-0',
-        regex: /^\d{4}-\d{7}-\d$/,
-        format: (val) => {
-            const digits = val.replace(/\D/g, '').slice(0, 12);
-            let formatted = '';
-            if (digits.length > 0) {
-                formatted += digits.substring(0, 4);
-            }
-            if (digits.length > 4) {
-                formatted += '-' + digits.substring(4, 11);
-            }
-            if (digits.length > 11) {
-                formatted += '-' + digits.substring(11, 12);
-            }
-            return formatted;
-        }
-    },
-    'SSS ID': {
-        placeholder: 'e.g. 12-3456789-0',
-        hint: 'SSS: 00-0000000-0',
-        regex: /^\d{2}-\d{7}-\d$/,
-        format: (val) => {
-            const digits = val.replace(/\D/g, '').slice(0, 10);
-            let formatted = '';
-            if (digits.length > 0) {
-                formatted += digits.substring(0, 2);
-            }
-            if (digits.length > 2) {
-                formatted += '-' + digits.substring(2, 9);
-            }
-            if (digits.length > 9) {
-                formatted += '-' + digits.substring(9, 10);
-            }
-            return formatted;
-        }
-    },
-    'TIN': {
-        placeholder: 'e.g. 123-456-789-000',
-        hint: 'TIN: 000-000-000-000',
-        regex: /^\d{3}-\d{3}-\d{3}-\d{3,5}$/,
-        format: (val) => {
-            const digits = val.replace(/\D/g, '').slice(0, 14);
-            let formatted = '';
-            if (digits.length > 0) {
-                formatted += digits.substring(0, 3);
-            }
-            if (digits.length > 3) {
-                formatted += '-' + digits.substring(3, 6);
-            }
-            if (digits.length > 6) {
-                formatted += '-' + digits.substring(6, 9);
-            }
-            if (digits.length > 9) {
-                formatted += '-' + digits.substring(9);
-            }
-            return formatted;
-        }
-    },
-    'PhilHealth ID': {
-        placeholder: 'e.g. 12-345678901-2',
-        hint: 'PhilHealth: 00-000000000-0',
-        regex: /^\d{2}-\d{9}-\d$/,
-        format: (val) => {
-            const digits = val.replace(/\D/g, '').slice(0, 12);
-            let formatted = '';
-            if (digits.length > 0) {
-                formatted += digits.substring(0, 2);
-            }
-            if (digits.length > 2) {
-                formatted += '-' + digits.substring(2, 11);
-            }
-            if (digits.length > 11) {
-                formatted += '-' + digits.substring(11, 12);
-            }
-            return formatted;
-        }
-    },
-    'Senior Citizen ID': {
-        placeholder: 'e.g. 12-3456',
-        hint: 'Senior Citizen ID (4-12 alphanumeric/dashes)',
-        regex: /^[A-Z0-9-]{4,12}$/i,
-        format: (val) => {
-            return val.toUpperCase().replace(/[^A-Z0-9-]/g, '').slice(0, 12);
-        }
-    },
-    'Other': {
-        placeholder: 'Enter ID number',
-        hint: 'Min 4 characters',
-        regex: /^.{4,30}$/,
-        format: (val) => val.slice(0, 30)
-    }
-};
+
 
 const idTypeSelect = document.getElementById('id_type');
 const idNumberInput = document.getElementById('id_number');
 const validationHint = document.getElementById('id-validation-hint');
 const submitBtn = document.getElementById('submit-btn');
 
-function validateID() {
-    if (!idTypeSelect || !idNumberInput || !validationHint) return true;
-    const selectedType = idTypeSelect.value;
-    const value = idNumberInput.value.trim();
 
-    if (!selectedType) {
-        idNumberInput.placeholder = 'Enter ID number';
-        validationHint.textContent = '';
-        idNumberInput.style.borderColor = '';
-        return true;
-    }
-
-    const config = idTypesConfig[selectedType];
-    if (!config) return true;
-
-    idNumberInput.placeholder = config.placeholder;
-
-    if (!value) {
-        validationHint.textContent = `Format: ${config.hint}`;
-        validationHint.style.color = 'rgba(255, 255, 255, 0.7)';
-        idNumberInput.style.borderColor = '';
-        return false;
-    }
-
-    const isValid = config.regex.test(value);
-    if (isValid) {
-        validationHint.textContent = `✓ Valid ${selectedType} format`;
-        validationHint.style.color = '#a7f3d0';
-        idNumberInput.style.borderColor = '#10b981';
-    } else {
-        validationHint.textContent = `⚠️ Invalid format. Expected: ${config.hint}`;
-        validationHint.style.color = '#fca5a5';
-        idNumberInput.style.borderColor = '#ef4444';
-    }
-    return isValid;
-}
 
 if (idTypeSelect && idNumberInput) {
-    idTypeSelect.addEventListener('change', () => {
-        idNumberInput.value = '';
-        validateID();
-    });
-
-    idNumberInput.addEventListener('input', (e) => {
-        const selectedType = idTypeSelect.value;
-        const config = idTypesConfig[selectedType];
-        if (config && config.format) {
-            const start = e.target.selectionStart;
-            const prevLen = e.target.value.length;
-            e.target.value = config.format(e.target.value);
-            const postLen = e.target.value.length;
-            
-            if (start !== null) {
-                e.target.setSelectionRange(start + (postLen - prevLen), start + (postLen - prevLen));
-            }
-        }
-        validateID();
-    });
-
-    validateID();
+    initIDValidation('id_type', 'id_number', 'id-validation-hint');
 
     const btnSearchResident = document.getElementById('btn-search-resident');
     const residentNameInput = document.getElementById('resident_name');
@@ -1109,7 +995,15 @@ if (idTypeSelect && idNumberInput) {
             }
             relationship = relationship || '—';
             
-            const companions = document.getElementById('num_companions').value || '0';
+            let companionsText = document.getElementById('num_companions').value || '0';
+            if (parseInt(companionsText) > 0) {
+                const compNames = Array.from(document.querySelectorAll('input[name="companion_names[]"]'))
+                                      .map(inp => inp.value.trim())
+                                      .filter(Boolean);
+                if (compNames.length > 0) {
+                    companionsText += ` (${compNames.join(', ')})`;
+                }
+            }
             
             const purpSelect = document.getElementById('purpose');
             let purpose = purpSelect.value;
@@ -1152,7 +1046,7 @@ if (idTypeSelect && idNumberInput) {
                 </div>
                 <div class="confirm-detail-item">
                     <span class="confirm-detail-label">Companions</span>
-                    <span class="confirm-detail-value">${escapeHtml(companions)}</span>
+                    <span class="confirm-detail-value">${escapeHtml(companionsText)}</span>
                 </div>
                 <div class="confirm-detail-item">
                     <span class="confirm-detail-label">Purpose of Visit</span>
@@ -1312,10 +1206,10 @@ function printCheckinReceipt(visitCode, visitorName, residentName, residentRoom,
                     <span class="detail-label">Date / Time:</span>
                     <span class="detail-value">${dateTime}</span>
                 </div>
-                ${companions > 0 ? `
+                ${companions && companions !== '0' && companions !== 0 ? `
                 <div class="detail-row">
                     <span class="detail-label">Companions:</span>
-                    <span class="detail-value">${companions} person(s)</span>
+                    <span class="detail-value">${String(companions).includes('(') ? companions : companions + ' person(s)'}</span>
                 </div>` : ''}
             </div>
             <div class="divider"></div>
@@ -1335,6 +1229,58 @@ function printCheckinReceipt(visitCode, visitorName, residentName, residentRoom,
     `);
     printWindow.document.close();
 }
+
+(function initDynamicCompanions() {
+    const numCompanionsInput = document.getElementById('num_companions');
+    const companionsContainer = document.getElementById('companions-container');
+    const companionsList = document.getElementById('companions-list');
+
+    function renderCompanionFields() {
+        const num = parseInt(numCompanionsInput.value) || 0;
+        if (num > 0) {
+            companionsContainer.style.display = 'block';
+            let html = '';
+            for (let i = 0; i < num; i++) {
+                html += `
+                    <div class="companion-entry" style="background:#f8fafc; padding:10px; border-radius:6px; margin-bottom:10px; border:1px solid #e2eaf0;">
+                        <p style="font-weight:700; font-size:12px; margin-bottom:8px; color:#5a6a77;">Companion ${i + 1}</p>
+                        <div class="form-grid" style="grid-template-columns: 1fr 1fr;">
+                            <div class="form-group">
+                                <label style="font-size:11px;">Full Name <span class="req">*</span></label>
+                                <input type="text" name="companion_names[]" required placeholder="Name">
+                            </div>
+                            <div class="form-group">
+                                <label style="font-size:11px;">Relationship <span class="req">*</span></label>
+                                <select name="companion_rels[]" required>
+                                    <option value="">— Select —</option>
+                                    <option value="Spouse">Spouse</option>
+                                    <option value="Child">Child</option>
+                                    <option value="Parent">Parent</option>
+                                    <option value="Sibling">Sibling</option>
+                                    <option value="Relative">Relative</option>
+                                    <option value="Friend">Friend</option>
+                                    <option value="Caregiver">Caregiver</option>
+                                    <option value="Other">Other</option>
+                                </select>
+                            </div>
+                        </div>
+                    </div>
+                `;
+            }
+            companionsList.innerHTML = html;
+        } else {
+            companionsContainer.style.display = 'none';
+            companionsList.innerHTML = '';
+        }
+    }
+
+    if (numCompanionsInput && companionsContainer && companionsList) {
+        numCompanionsInput.addEventListener('input', renderCompanionFields);
+        if (parseInt(numCompanionsInput.value) > 0 && companionsList.children.length === 0) {
+            renderCompanionFields();
+        }
+    }
+})();
 </script>
 </body>
 </html>

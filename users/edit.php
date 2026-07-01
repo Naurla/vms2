@@ -58,6 +58,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $roleToSet = isAdmin() ? $role : $user['role']; // Only admins can change role
         $db->prepare("UPDATE users SET full_name=?, email=?, password=?, role=? WHERE id=?")
            ->execute([$fullName, $email, $hash, $roleToSet, $id]);
+        
+        logActivity($db, $self['id'], 'Edited User', "User ID: {$id}, Name: {$fullName}");
+        
         setFlash('success', 'Profile updated successfully.');
         redirect($id == $self['id'] ? '../dashboard.php' : '../users/list.php');
     }
